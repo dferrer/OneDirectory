@@ -9,7 +9,7 @@ if __name__ == '__main__':
 
     # Define a new user having full r/w permissions
     home = expanduser('~')
-    onedir = home + '/OneDirectory/'
+    onedir = home + '/onedir/'
     authorizer.add_user(username='test', password='12345', homedir=onedir, perm='elradfmwM')
 
     # Instantiate FTP handler class
