@@ -14,16 +14,26 @@ def upload(server, local_path, remote_path):
 	server.put(local_path, remote_path)
 
 if __name__ == "__main__":
-	# Example path and server information.
-	onedir = expanduser('~') + '/onedir/'
-	host = '0.0.0.0'
-	username = 'dylan'
-	with open('password.db') as f:
-		password = f.read().strip()
+	# Information needed to connect to remote server.
+	host = '128.143.67.201' # labunix01.cs.virginia.edu/
+	username = 'dlf3x'
+	password = 'NVFmHjoe'
 
-	# Example file transfer.
+	# Paths to ~/onedir on local machine and server.
+	local_path = expanduser('~') + '/onedir/'
+	server_path = '/home/dlf3x/onedir'
+
+	# Connect to the server via SSH.
 	server = connect(host, username, password)
-	server.chdir(onedir)
-	download(server, server.getcwd() + '/hello_world.hs', onedir + '/transferred_file.hs')
-	upload(server, onedir + '/transferred_file.hs', server.getcwd() + '/another_file.hs')
+
+	# Change the server's current working directory to ~/onedir
+	server.chdir(server_path)
+
+	# Download an example file from the server.
+	download(server, server_path + '/example1.txt', local_path + '/example1.txt')
+
+	# Upload an example file to the server.
+	upload(server, local_path + '/example2.hs', server_path + '/example2.hs')
+
+	# Close the connection to the server.
 	server.close()
