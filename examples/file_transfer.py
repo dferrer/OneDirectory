@@ -21,7 +21,7 @@ if __name__ == "__main__":
 
 	# Paths to ~/onedir on local machine and server.
 	local_path = expanduser('~') + '/onedir/'
-	server_path = '/home/dlf3x/onedir'
+	server_path = '/home/dlf3x/onedir/'
 
 	# Connect to the server via SSH.
 	server = connect(host, username, password)
@@ -30,10 +30,10 @@ if __name__ == "__main__":
 	server.chdir(server_path)
 
 	# Download an example file from the server.
-	download(server, server_path + '/example1.txt', local_path + '/example1.txt')
+	download(server, server_path + 'example1.txt', local_path + 'example1.txt')
 
 	# Upload an example file to the server.
-	upload(server, local_path + '/example2.hs', server_path + '/example2.hs')
+	upload(server, local_path + 'example2.hs', server_path + 'example2.hs')
 
 	# Close the connection to the server.
 	server.close()
