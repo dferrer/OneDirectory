@@ -21,7 +21,6 @@ def upload(server, local_path, remote_path):
 # and overrides key event methods.
 class Handler(FileSystemEventHandler):
     def on_modified(self, event):
-	print str(event.src_path)[str(event.src_path).rfind("/")+1:len(str(event.src_path))]
         upload(server, event.src_path, server_path + str(event.src_path)[str(event.src_path).rfind("/")+1:len(str(event.src_path))])
     def on_moved(self, event):
         print "Moved " + event.src_path
