@@ -1,4 +1,5 @@
-import pysftp, paramiko
+import pysftp
+import paramiko
 import time
 from os.path import expanduser
 from watchdog.observers import Observer
