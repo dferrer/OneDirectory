@@ -1,6 +1,6 @@
 CREATE TABLE IF NOT EXISTS account (
   user_id   varchar(20),
-  password  varchar(20),
+  password  varchar(100),
   auto_sync boolean,
   primary key(user_id)
 );
@@ -16,6 +16,6 @@ CREATE TABLE IF NOT EXISTS log (
   user_id varchar(20),
   path    varchar(100),
   time    timestamp,
-  action  text,
+  action  varchar(200),
   primary key(user_id, path, time, action)
 );
