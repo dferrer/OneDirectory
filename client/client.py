@@ -1,4 +1,4 @@
-import bcrypt, MySQLdb, sys, time
+import bcrypt, MySQLdb, sys
 from _mysql_exceptions import IntegrityError, OperationalError
 
 # Use global variables to maintain a connection to the database.
@@ -52,7 +52,7 @@ def prompt():
     + 'or "Quit" to exit the program\n').lower()
 
 def main():
-    """Receives commands from the user."""
+    """Receives and executes commands from the user."""
     while True:
         user_input = prompt()
         if user_input == 'create account':
