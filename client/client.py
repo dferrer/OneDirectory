@@ -20,7 +20,10 @@ def is_valid(user, password):
     """Checks if an entered password matches a user's password in the database."""
     encoded = password.encode("utf-8")
     hashed = get_password(user)
-    return bcrypt.hashpw(encoded, hashed) == hashed
+    try:
+        return bcrypt.hashpw(encoded, hashed) == hashed
+    except TypeError:
+        return False
 
 def create_account(user, password, auto_sync=True):
     """Adds a user's account information to the database and creates an account on the server."""
@@ -31,7 +34,6 @@ def create_account(user, password, auto_sync=True):
     except IntegrityError:
         print "Error: user " + user + " already exists."
         return False
-
 
 def get_password(user):
     """Queries the database for a user's password."""
@@ -70,7 +72,7 @@ class ClientProtocol(protocol.Protocol):
         elif cmd == 'change password':
             self.handle_update_password()
         elif cmd == 'quit':
-            os._exit(0)
+            os._exit()
         else:
             print 'Command "' + cmd + '" not found.'
 
