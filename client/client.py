@@ -21,7 +21,11 @@ def is_valid(user, password):
     encoded = password.encode("utf-8")
     hashed = get_password(user)
     try:
-        return bcrypt.hashpw(encoded, hashed) == hashed
+        if bcrypt.hashpw(encoded, hashed) == hashed:
+            return True
+        else:
+            print 'Error: incorrect password for user {0}'.format(user)
+            return False
     except TypeError:
         return False
 
@@ -74,7 +78,7 @@ class ClientProtocol(protocol.Protocol):
         elif cmd == 'quit':
             os._exit()
         else:
-            print 'Command "' + cmd + '" not found.'
+            print 'Command "{0}" not found.'.format(cmd)
 
     def handle_create_account(self):
         """Helper function for create_account."""
@@ -118,7 +122,9 @@ class ClientProtocol(protocol.Protocol):
         self.send_data()
 
 class ClientFactory(protocol.ClientFactory):
-    protocol = ClientProtocol
+    def buildProtocol(self, addr):
+        return ClientProtocol()
+
     def startedConnecting(self, connector):
         print 'Connected to ' + HOST + ':' + str(PORT)
 
@@ -133,7 +139,9 @@ class ClientFactory(protocol.ClientFactory):
         sys.exit(1)
 
 if __name__ == "__main__":
-    reactor.connectTCP(HOST, PORT, ClientFactory())
+    factory = ClientFactory()
+    factory.protocol = ClientProtocol()
+    reactor.connectTCP(HOST, PORT, factory)
     reactor.run()
 
 # Close the connection to the database.

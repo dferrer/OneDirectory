@@ -29,7 +29,11 @@ def is_valid(user, password):
     encoded = password.encode("utf-8")
     hashed = get_password(user)
     try:
-        return bcrypt.hashpw(encoded, hashed) == hashed
+        if bcrypt.hashpw(encoded, hashed) == hashed:
+            return True
+        else:
+            print 'Error: incorrect password for user {0}'.format(user)
+            return False
     except TypeError:
         return False
 
@@ -50,22 +54,38 @@ def adjust_path(path, user):
 
 class Handler(FileSystemEventHandler):
     """Handler inherits from FileSystemEventHandler and overrides key event methods."""
-    global cursor
     def __init__(self, user, server):
         self._user = user
         self._server = server
+        self._just_created = False
+
     def on_modified(self, event):
-        print "Modified " + event.src_path
-        print "Server path is " + adjust_path(event.src_path, self._user)
+        if not self._just_created and not event.is_directory:
+            local_path = event.src_path
+            remote_path = adjust_path(local_path, self._user)
+            index = local_path.find('onedir')
+            upload(self._server, local_path, remote_path)
+            print 'Updated file {0} on server.'.format(local_path[index:])
+        self._just_created = False
+
     def on_moved(self, event):
         print "Moved " + event.src_path
         print "Server path is " + adjust_path(event.src_path, self._user)
+        self._just_created = False
+
     def on_created(self, event):
-        local_path = event.src_path
-        print "Server path is " + adjust_path(event.src_path, self._user)
+        self._just_created = True
+        if not event.is_directory:
+            local_path = event.src_path
+            remote_path = adjust_path(local_path, self._user)
+            index = local_path.find('onedir')
+            upload(self._server, local_path, remote_path)
+            print 'Uploaded file {0} to server.'.format(local_path[index:])
+
     def on_deleted(self, event):
         print 'Deleted ' + event.src_path
         print "Server path is " + adjust_path(event.src_path, self._user)
+        self._just_created = False
 
 if __name__ == '__main__':
     # Prompt user for user ID and password before syncing.
@@ -97,7 +117,6 @@ if __name__ == '__main__':
         while True:
             time.sleep(1)
     except KeyboardInterrupt:
-        print 'No longer syncing directories.'
         observer.stop()
     observer.join()
 
