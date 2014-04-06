@@ -17,7 +17,8 @@ if __name__ == "__main__":
 	# Information needed to connect to remote server.
 	host = '128.143.67.201' # labunix01.cs.virginia.edu/
 	username = 'dlf3x'
-	password = 'NVFmHjoe'
+	with open('password.txt') as f:
+		password = f.read().strip()
 
 	# Paths to ~/onedir on local machine and server.
 	local_path = expanduser('~') + '/onedir/'
