@@ -62,6 +62,15 @@ def get_history():
         action = row[2]
         time = row[1]
         print 'User ' + user + ' committed action ' + action + ' at time ' + str(time)
+#
+# def remove_user(user):
+#     """Removes the user identified by the passed parameter and removes files associated to the user."""
+#     cursor.execute("DELETE FROM tablewithusers WHERE user_id = user")
+#     remove_all_files(user)
+
+# def remove_user_files(user):
+#     """Removes all files associated to user"""
+#     cursor.execute("DELETE FROM tablewithfiles WHERE user_id = user")
 
 def prompt():
     """Prompts the user for a command."""
