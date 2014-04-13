@@ -36,23 +36,22 @@ def get_file_data(user=None):
 
 def print_file_stats(row):
     if row[0] != 0:
-        print 'Number of files: ' + str(row[0])
-        print 'Average file size: ' + '%.2f' % row[1]
-        print 'Maximum file size: ' + str(row[2])
-        print 'Minimum file size: ' + str(row[3])
+        print 'Number of files: {0}'.format(row[0])
+        print 'Average file size: {0:.2f}'.format(row[1])
+        print 'Maximum file size: {0}'.format(row[2])
+        print 'Minimum file size: {0}'.format(row[3])
     else:
         print "Error: no files stored."
-        return
 
 def print_file_info(rows):
     print 'File data: '
     for row in rows:
-        print 'Filename: ' + str(row[0]) + ', size: ' + str(row[1])
+        print 'Filename: {0}, size: {1}'.format(row[0], row[1])
 
 def change_password(user, password):
     """Changes a user's password."""
     cursor.execute("UPDATE account SET password = %s WHERE user_id = %s", (encrypt(password),user))
-    print "Updated password for " + user
+    print "Updated password for {0}".format(user)
 
 def get_history():
     """Displays information about the history of connections involving synchronization."""
@@ -61,48 +60,67 @@ def get_history():
         user = row[0]
         action = row[2]
         time = row[1]
-        print 'User ' + user + ' committed action ' + action + ' at time ' + str(time)
-#
-# def remove_user(user):
-#     """Removes the user identified by the passed parameter and removes files associated to the user."""
-#     cursor.execute("DELETE FROM tablewithusers WHERE user_id = user")
-#     remove_all_files(user)
+        print 'User {0} committed action {1} at time {2}'.format(user, action, time)
 
-# def remove_user_files(user):
-#     """Removes all files associated to user"""
-#     cursor.execute("DELETE FROM tablewithfiles WHERE user_id = user")
+def remove_user(user):
+    """Removes the user identified by the passed parameter and removes files associated with the user."""
+    cursor.execute("DELETE FROM account WHERE user_id = %s", (user,))
+    print 'Deleted account for user {0}'.format(user)    
+
+def remove_user_files(user):
+    """Removes all files associated with a user"""
+    cursor.execute("DELETE FROM file WHERE user_id = %s", (user,))
+    print 'Removed all files for user {0}'.format(user)
+
+def get_file_data_aux():
+    """Helper function for get_file_data()"""
+    user = raw_input('Enter a user ID (or press enter to view data for all files): ')
+    if user == '\n':
+        get_file_data()
+    else:
+        get_file_data(user)
+
+def remove_user_aux():
+    """Helper function for remove_user()"""
+    user = raw_input('Enter a user ID: ')
+    remove_user(user)
+
+def remove_user_files_aux():
+    """Helper function for remove_user_files()"""
+    user = raw_input('Enter a user ID: ')
+    remove_user_files(user)
+
+def change_password_aux():
+    """Helper function for change_password()"""
+    user = raw_input('Enter a user ID: ')
+    password = raw_input('Enter a password: ')
+    change_password(user, password)
 
 def prompt():
     """Prompts the user for a command."""
     return raw_input('\nEnter:\n'
     + '"View Users" to see a list of OneDir users\n'
     + '"View File Data" to see information about the synced files\n'
+    + '"Delete Account" to delete a user\s account\n'
+    + '"Delete Files" to remove a user\s files\n'
     + '"Change Password" to change a user\'s password\n'
     + '"View History" to view the history of connections\n'
     + 'or "Quit" to exit the program\n').lower()
 
 def main():
     """Receives and executes commands from the user."""
+    commands = {
+        'view users' : get_user_data,
+        'view file data' : get_file_data_aux,
+        'delete account' : remove_user_aux,
+        'delete files' : remove_user_files_aux,
+        'change password' : change_password_aux,
+        'view history' : get_history,
+        'quit' : sys.exit,
+    }
     while True:
-        user_input = prompt()
-        if user_input == 'view users':
-            get_user_data()
-        elif user_input == 'view file data':
-            user = raw_input('Enter a user ID (or press enter to view data for all files): ')
-            if user == '\n':
-                get_file_data()
-            else:
-                get_file_data(user)
-        elif user_input == 'change password':
-            user = raw_input('Enter a user ID: ')
-            password = raw_input('Enter a password: ')
-            change_password(user, password)
-        elif user_input == 'view history':
-            get_history()
-        elif user_input == 'quit':
-            sys.exit()
-        else:
-            print 'Command "' + user_input + '" not found.'
+        cmd = prompt()
+        commands.get(cmd, lambda: sys.stdout.write('Command "' + cmd + '" not found.'))()
 
 if __name__ == "__main__":
     main()

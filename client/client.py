@@ -4,7 +4,7 @@ from twisted.internet import protocol, reactor
 
 # Use global variables to maintain a connection to the database.
 with open('password.txt') as f:
-    db = MySQLdb.connect(host="dbm2.itc.virginia.edu", user="dlf3x", passwd=f.read(), db="cs3240onedir")
+    db = MySQLdb.connect(host="dbm2.itc.virginia.edu", user="dlf3x", passwd=f.read().strip(), db="cs3240onedir")
 db.autocommit(True)
 cursor = db.cursor()
 
