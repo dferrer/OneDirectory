@@ -1,4 +1,4 @@
-import bcrypt, MySQLdb, sys
+import bcrypt, MySQLdb, os, sys
 from _mysql_exceptions import IntegrityError, OperationalError
 
 # Use global variables to maintain a connection to the database.
@@ -69,6 +69,11 @@ def remove_user(user):
 
 def remove_user_files(user):
     """Removes all files associated with a user"""
+    cursor.execute("SELECT path FROM file WHERE user_id = %s", (user,))
+    files = cursor.fetchall()
+    for f in files:
+        path = '/home/dlf3x/CS3240/{0}{1}'.format(user,f[0])
+        os.remove(path)
     cursor.execute("DELETE FROM file WHERE user_id = %s", (user,))
     print 'Removed all files for user {0}'.format(user)
 
