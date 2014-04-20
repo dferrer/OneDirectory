@@ -1,4 +1,4 @@
-import bcrypt, json, MySQLdb, os, pysftp, sys, time
+import bcrypt, json, MySQLdb, os, pysftp, sys, time, threading
 from os.path import expanduser
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
@@ -122,44 +122,54 @@ class ClientProtocol(protocol.Protocol):
         else:
             self.send_data()
   
-    def handle_login(self): ###
-	# Prompt user for user ID and password before syncing.
-	user = raw_input('Please enter your user ID: ')
+    def handle_login(self): 
+        # Prompt user for user ID and password before syncing.
+        user = raw_input('Please enter your user ID: ')
         password = raw_input('Please enter your password: ')
-	global observer
+        global observer
         if not is_valid(user, password):
             print "Invalid Login."
-	elif observer != None and observer.isAlive():
-	    print "Already Logged In."	
-	else:
-	    # Set values for paths to onedir folder on client and server machines.
-    	    home = expanduser('~')
-    	    local_path = '{0}/onedir/'.format(home)
-    	    server_path = '/home/dlf3x/CS3240/{0}/onedir/'.format(user)
-	    # Begin the SFTP session with the server.
-    	    server = connect()
-	    # Instantiate file system handler.
-	    event_handler = Handler(user, server)
-	    # Schedule the observer and set it to run in the background.
-	    observer = Observer()
-    	    observer.schedule(event_handler, path=local_path, recursive=True)
-    	    observer.daemon = True
-   	    observer.start()
-	    print "Logged in as " + user +"."
-
-    def handle_logout(self): ###
-	global observer
-	if observer != None and not observer.isAlive():
-	    print "Not Logged In."
-	else:
-	    observer.stop()
-	    observer.join()
-	    print "Logged out."
-
+            self.send_data()
+        elif observer != None and observer.isAlive():
+            print "Already Logged In."	
+            self.send_data()
+        else:
+            # Set values for paths to onedir folder on client and server machines.
+            home = expanduser('~')
+            local_path = '{0}/onedir/'.format(home)
+            server_path = '/home/dlf3x/CS3240/{0}/onedir/'.format(user)
+            # Begin the SFTP session with the server.
+            server = connect()
+            # Instantiate file system handler.
+            event_handler = Handler(user, server)
+            # Schedule the observer and set it to run in the background.
+            observer = Observer()
+            observer.schedule(event_handler, path=local_path, recursive=True)
+            observer.daemon = True
+            observer.start()
+            data = json.dumps({
+                    'cmd' : 'login', 
+                    'user' : user, 
+                    'local_path' : local_path, 
+                    'server_path' : server_path
+                    })
+            self.transport.write(data)
+            
+            
+    def handle_logout(self):
+        global observer
+        if observer != None and not observer.isAlive():
+            print "Not Logged In."
+            self.send_data()
+        else:
+            observer.stop()
+            observer.join()
+            self.send_data()
+            
     def connectionMade(self):
         """Executes when client connects to server."""
         self.send_data()
-
+        
     def dataReceived(self, data):
         """Executes when data is received from the server."""
         if str(data) != 'flag':
