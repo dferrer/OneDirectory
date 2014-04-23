@@ -71,10 +71,6 @@ def prompt():
     + '"Change Password" to modify your password\n'
     + 'or "Quit" to exit the program\n').lower()
 
-def watching(self, filepath, mask):
-    message = "event %s on %s" % (', '.join(inotify.humanReadableMask(mask)), filepath)
-    print message
-
 class ClientProtocol(protocol.Protocol):
     def __init__(self):
         self.loggedIn = False
@@ -103,6 +99,8 @@ class ClientProtocol(protocol.Protocol):
     def onedir_change(self,filepath,mask):
         message = "event %s on %s" % (', '.join(inotify.humanReadableMask(mask)), filepath) 
         print message
+        #print "onedir self: " + str(self) ###
+        #print self.transport
         self.transport.write(message)
                 
     def handle_create_account(self):
@@ -138,6 +136,8 @@ class ClientProtocol(protocol.Protocol):
   
     def handle_login(self):
         # Prompt user for user ID and password before syncing.
+        #print "login self: "+str(self) ###
+        #print str(self.transport)
         user = raw_input('Please enter your user ID: ')
         password = raw_input('Please enter your password: ')
         if not is_valid(user, password):
@@ -156,6 +156,9 @@ class ClientProtocol(protocol.Protocol):
             self.transport.write(data)
             
     def handle_logout(self):
+        #print "logout self: "+str(self) ###
+        #print str(self.transport)
+        
         if not self.loggedIn:
             print "Not logged in."
             self.send_data()
@@ -198,6 +201,8 @@ class ClientProtocol(protocol.Protocol):
             print "Received: " + str(data)
         self.send_data()
 
+
+
 class ClientFactory(protocol.ClientFactory):
     def __init__(self,path,mask):
         self.watch_path = filepath.FilePath(path)
@@ -205,12 +210,15 @@ class ClientFactory(protocol.ClientFactory):
         self.notifier = inotify.INotify()
 
     def buildProtocol(self, addr):
-        return ClientProtocol()
+        #print "building protocol" ###
+        self.protocol = ClientProtocol()
+        return self.protocol
 
     def startFactory(self):
         print "Starting Factory"
         self.notifier.startReading()
         self.notifier.watch(self.watch_path, mask=self.watch_mask, callbacks=[self.onedirEvent])
+        print "protocol: "+str(self.protocol)
 
     def onedirEvent(self, watch_obj, filepath, mask):
         print "event happened"
@@ -218,6 +226,7 @@ class ClientFactory(protocol.ClientFactory):
 
     def startedConnecting(self, connector):
         print 'Connected to ' + HOST + ':' + str(PORT)
+        print "protocol: "+str(self.protocol)
 
     def clientConnectionLost(self, connector, reason):
         print 'Lost connection: ' + str(reason)
