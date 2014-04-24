@@ -1,55 +1,65 @@
-# Ignore this file for now, it's mostly just an example from Collab.
-from twisted.internet import protocol, reactor
 import sys
+from os.path import expanduser
+from twisted.internet import protocol, reactor, inotify
+from twisted.python import filepath
 
+# Specify server address and port number.
 HOST = '128.143.67.201'
 PORT = 2121
 
-class TSClntProtocol(protocol.Protocol):
-    def sendData(self):
-        """
-        Our own method, does NOT override anything in base class.
-        Get data from keyboard and send to the server.
-        """
-        data = raw_input('Enter JSON of command: ')
-        if data:
-            self.transport.write(str(data))
-        else:
-            self.transport.loseConnection() # if no data input, close connection
+class ClientProtocol(protocol.Protocol):
+    def __init__(self, factory):
+        self._factory = factory
 
     def connectionMade(self):
-        """ what we'll do when connection first made """
-        self.sendData()
+        print 'Connected to server'
 
     def dataReceived(self, data):
-        """ what we'll do when our client receives data """
-        print "client received: ", data
-        self.sendData()  # let's repeat: get more data to send to server
+        print 'Received {0}'.format(data)
 
-class TSClntFactory(protocol.ClientFactory):
-    protocol = TSClntProtocol
-    # next, set methods to be called when connection lost or fails
+class ClientFactory(protocol.ClientFactory):
+    def __init__(self, path):
+        self._path = filepath.FilePath(path)
+        self._protocol = ClientProtocol(self)
+        self._notifier = inotify.INotify()
+        self._notifier.startReading()
+        self._notifier.watch(self._path, autoAdd=True, callbacks=[self.onChange], recursive=True)
+
+    def onChange(self, watch, fpath, mask):
+        path = fpath.path
+        index = path.find('onedir')
+        data = json.dumps({
+            'cmd' : 'inotify_cmd',
+            'mask' : ', '.join(inotify.humanReadableMask(mask)),
+            'path' : path[index:]
+            })
+        self._protocol.transport.write(str(data))
+
+    def buildProtocol(self, addr):
+        return self._protocol
+
+    def startedConnecting(self, connector):
+        print 'Connected to {0}:{1}'.format(HOST,PORT)
+
     def clientConnectionLost(self, connector, reason):
-        print 'Lost connection.  Reason:', reason
+        print 'Lost connection: {0}'.format(reason)
+        reactor.stop()
+        sys.exit(1)
 
     def clientConnectionFailed(self, connector, reason):
-        print 'Connection failed. Reason:', reason
+        print 'Connection failed: {0}'.format(reason)
         reactor.stop()
-    # clientConnectionLost = clientConnectionFailed = \
-    #     lambda self, connector, reason: reactor.stop()  # version from book
-    #     # lambda self, connector, reason: handleLostFailed(reason)
+        sys.exit(1)
 
-    # # Heck, I had this working with the code just above this, so you didn't need
-    # # the lamba.  But then I broke it.  Will post a new version with a fix.
-    # def handleLostFailed1(self, reason):
-    #     print 'Connection closed, lost or failed.  Reason:', reason
-    #     reactor.stop()
+def main():
+    # Locate the user's onedir folder.
+    home = expanduser('~')
+    path = '{0}/onedir'.format(home)
 
+    # Create a factory and run the reactor.
+    factory = ClientFactory(path)
+    reactor.connectTCP(HOST, PORT, factory)
+    reactor.run()
 
 if __name__ == "__main__":
-    if len(sys.argv) > 1:
-        HOST = sys.argv[1]
-    print "Connecting to (HOST, PORT): ", (HOST, PORT)
-
-    reactor.connectTCP(HOST, PORT, TSClntFactory())
-    reactor.run()
+    main()
