@@ -1,6 +1,8 @@
 import json, os, re
 from twisted.internet import protocol, reactor, inotify
 from twisted.python import filepath
+from exceptions import OSError
+from shutil import rmtree
 
 PORT = 2121
 HOME = os.path.expanduser('~')
@@ -11,30 +13,50 @@ class ServerProtocol(protocol.Protocol):
         
     def dataReceived(self, data):
         print 'received ' + str(data)
-        message = json.loads(data)
-        self.dispatch(message)
-        cmd = message['cmd']
+        received = filter(None, re.split('({.*?})', data))
+        for item in received:
+            message = json.loads(item)
+            self.dispatch(message)
 
     def dispatch(self, message):
+        user = message['user']
+        cmd = message['cmd']
         commands = {
             'create account' : self._handleCreateAccount,
+            'touch' : self._handleTouch,
             'mkdir' : self._handleMkdir,
+            'rm' : self._handleRm,
+            'rmdir' : self._handleRmdir,
         }
-        cmd = message['cmd']
-        commands.get(cmd, lambda _: None)(message)
+        commands.get(cmd, lambda _: None)(message, user)
 
-            
-    def _handleCreateAccount(self, message):
-        user =  message['user']
+    def _handleTouch(self, message, user):
+        path = message['path']
+        absolute_path = '{0}/CS3240/{1}/{2}'.format(HOME, user, path)
+        with open(absolute_path, 'a'):
+            os.utime(absolute_path, None)
+
+    def _handleCreateAccount(self, message, user):
         os.makedirs('{0}/CS3240/{1}/onedir'.format(HOME, user))
-        print 'mkdir ' + '{0}/CS3240/{1}/onedir'.format(HOME, user)
 
-    def _handleMkdir(self, message):
-        user = message['user']
+    def _handleMkdir(self, message, user):
         path = message['path']
         absolute_path = '{0}/CS3240/{1}/{2}'.format(HOME, user, path)
         os.mkdir(absolute_path)
+
+    def _handleRm(self, message, user):
+        path = message['path']
+        absolute_path = '{0}/CS3240/{1}/{2}'.format(HOME, user, path)
+        try:
+            os.remove(absolute_path)
+        except OSError:
+            pass
             
+    def _handleRmdir(self, message, user):
+        path = message['path']
+        absolute_path = '{0}/CS3240/{1}/{2}'.format(HOME, user, path)
+        rmtree(absolute_path)
+
     # def handle_login(self,message):
     #     user = message['user']
     #     print user + ' logged in.'
@@ -79,9 +101,9 @@ class ServerFactory(protocol.ServerFactory):
 
     def dispatch(self, path, cmd, user):
         commands = {
-            # 'delete' : self._handleDelete,
             # 'create' : self._handleCreate,
             'create is_dir' : self._handleCreateDir,
+            'delete' : self._handleDelete,
         }
         commands.get(cmd, lambda _: None)(path, user)
 
@@ -92,7 +114,15 @@ class ServerFactory(protocol.ServerFactory):
             'path' : path,
             })
         self._protocol.transport.write(data)
-        
+
+    def _handleDelete(self, path, user):
+        data = json.dumps({
+            'user' : user,
+            'cmd' : 'rm',
+            'path' : path,
+            })
+        self._protocol.transport.write(data)
+
 def main():
     """Creates a factory and runs the reactor"""
     path = '{0}/CS3240/onedir'.format(HOME)

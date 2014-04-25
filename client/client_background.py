@@ -31,11 +31,20 @@ class ClientFactory(protocol.ClientFactory):
 
     def dispatch(self, path, cmd):
         commands = {
-            # 'delete' : self._handleDelete,
-            # 'create' : self._handleCreate,
+            'create' : self._handleCreate,
             'create is_dir' : self._handleCreateDir,
+            'delete' : self._handleDelete,
+            'delete is_dir' : self._handleDeleteDir
         }
         commands.get(cmd, lambda _: None)(path)
+
+    def _handleCreate(self, path):
+        data = json.dumps({
+                'user' : self._user,
+                'cmd' : 'touch',
+                'path' : path,
+            })
+        self._protocol.transport.write(data)
 
     def _handleCreateDir(self, path):
         data = json.dumps({
@@ -44,6 +53,22 @@ class ClientFactory(protocol.ClientFactory):
                 'path' : path,
             })
         self._protocol.transport.write(data)
+
+    def _handleDelete(self, path):
+        data = json.dumps({
+                'user' : self._user,
+                'cmd' : 'rm',
+                'path' : path,
+            })
+        self._protocol.transport.write(data)
+
+    def _handleDeleteDir(self, path):
+        data = json.dumps({
+                'user' : self._user,
+                'cmd' : 'rmdir',
+                'path' : path,
+            })
+        self._protocol.transport.write(data)        
 
     def buildProtocol(self, addr):
         return self._protocol
