@@ -1,6 +1,6 @@
-import bcrypt, json, MySQLdb, os, sys
+import bcrypt, json, MySQLdb, os, sys, time
 from _mysql_exceptions import IntegrityError, OperationalError
-from twisted.internet import protocol, reactor
+from twisted.internet import protocol, reactor, defer
 
 # Use global variables to maintain a connection to the database.
 with open('password.txt') as f:
@@ -65,68 +65,51 @@ def prompt():
     return raw_input('\nEnter:\n'
     + '"Create Account" to create an account\n'
     + '"Change Password" to modify your password\n'
+    + '"Toggle Autosync" to start/stop automatically synchronizing files\n'
     + 'or "Quit" to exit the program\n').lower()
 
 class ClientProtocol(protocol.Protocol):
     def send_data(self):
-        """Receives a command and handles it locally or sends it to the server."""
+        """Receives a command from stdin and handles it locally or sends it to the server."""
         cmd = prompt()
         if cmd == 'create account':
-            self.handle_create_account()
+            user = raw_input('Enter a user ID: ')
+            password = raw_input('Enter a password: ')
+            if create_account(user, password):
+                data = json.dumps({
+                    'cmd' : 'create account', 
+                    'user' : user, 
+                    'password' : '12345',
+                    })
+                self.transport.write(str(data))
+            reactor.callInThread(self.send_data)
         elif cmd == 'change password':
-            self.handle_update_password()
+            user = raw_input('Enter a user ID: ')
+            current_pass = raw_input('Enter current password: ')
+            new_pass = raw_input('Enter new password: ')
+            update_password(user, current_pass, new_pass):
+            reactor.callInThread(self.send_data)       
         elif cmd == 'quit':
             os._exit()
         else:
             print 'Command "{0}" not found.'.format(cmd)
-
-    def handle_create_account(self):
-        """Helper function for create_account."""
-        user = raw_input('Enter a user ID: ')
-        password = raw_input('Enter a password: ')
-        if create_account(user, password):
-            data = json.dumps({
-                'cmd' : 'create account', 
-                'user' : user, 
-                'password' : password
-            })
-            print 'Sending ' + str(data)
-            self.transport.write(str(data))
-        else:
-            self.send_data()
-
-    def handle_update_password(self):
-        """Helper function for update_password."""
-        user = raw_input('Enter a user ID: ')
-        current_pass = raw_input('Enter current password: ')
-        new_pass = raw_input('Enter new password: ')
-        if update_password(user, current_pass, new_pass):
-            data = json.dumps({
-                'cmd' : 'update password', 
-                'user' : user, 
-                'old_pass' : current_pass, 
-                'new_pass' : new_pass
-            })
-            self.transport.write(data)
-        else:
-            self.send_data()
+            reactor.callInThread(self.send_data())
 
     def connectionMade(self):
         """Executes when client connects to server."""
+        print 'Connected to ' + HOST + ':' + str(PORT)
         self.send_data()
 
-    def dataReceived(self, data):
-        """Executes when data is received from the server."""
-        if str(data) != 'flag':
-            print "Received: " + str(data)
-        self.send_data()
+    # def dataReceived(self, data):
+    #     """Executes when data is received from the server."""
+    #     self.send_data()
 
 class ClientFactory(protocol.ClientFactory):
-    def buildProtocol(self, addr):
-        return ClientProtocol()
+    def __init__(self):
+        self._protocol = ClientProtocol()
 
-    def startedConnecting(self, connector):
-        print 'Connected to ' + HOST + ':' + str(PORT)
+    def buildProtocol(self, addr):
+        return self._protocol
 
     def clientConnectionLost(self, connector, reason):
         print 'Lost connection: ' + str(reason)
@@ -140,7 +123,6 @@ class ClientFactory(protocol.ClientFactory):
 
 if __name__ == "__main__":
     factory = ClientFactory()
-    factory.protocol = ClientProtocol()
     reactor.connectTCP(HOST, PORT, factory)
     reactor.run()
 
