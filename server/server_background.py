@@ -56,36 +56,15 @@ class ServerProtocol(protocol.Protocol):
         path = message['path']
         absolute_path = '{0}/CS3240/{1}/{2}'.format(HOME, user, path)
         rmtree(absolute_path)
-
-    # def handle_login(self,message):
-    #     user = message['user']
-    #     print user + ' logged in.'
-    #     return_message = '%s successfully logged in.' % str(user)
-    #     self.transport.write(return_message)
     
-    # def handle_logout(self,message):
-    #     user = message['user']
-    #     print user + ' logged out.'
-    #     return_message = '%s successfully logged out.' % str(user)
-    #     self.transport.write(return_message)
-
-    # def handle_syncOn(self,message): #FINISH by bringing client up to date
-    #     user = message['user']
-    #     print user + 'is synchronizing.'
-    #     return_message = '%s is now auto synchronizing' % str(user)
-    #     self.transport.write(return_message)
-    
-    # def handle_syncOff(self,message):
-    #     user = message['user']
-    #     print user + 'stopped synchronizing.'
-    #     return_message = '%s has stopped  auto synchronizing' % str(user)
-    #     self.transport.write(return_message)
-    
+# Note: the server factory methods don't really do anything yet, so just ignore them for now
 class ServerFactory(protocol.ServerFactory):
     def __init__(self, path):
         self._path = filepath.FilePath(path)
         self._protocol = ServerProtocol()
         self._notifier = inotify.INotify()
+
+    def startFactory(self):
         self._notifier.startReading()
         self._notifier.watch(self._path, autoAdd=True, callbacks=[self.onChange], recursive=True)
 

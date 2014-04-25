@@ -1,8 +1,9 @@
-import bcrypt, json, MySQLdb, re, sys
-from os.path import expanduser
+import bcrypt, json, MySQLdb, os, pysftp, re, sys
+from os.path import expanduser, getsize, join
 from twisted.internet import protocol, reactor, inotify
 from twisted.python import filepath
 from getpass import getpass
+from datetime import datetime
 
 # Use global variables to maintain a connection to the database.
 with open('password.txt') as f:
@@ -14,18 +15,49 @@ cursor = db.cursor()
 HOST = '128.143.67.201'
 PORT = 2121
 
+def adjustPath(path):
+    index = path.find('onedir')
+    return path[index:]
+
+def getAbsolutePath(path):
+    home = expanduser('~')
+    return '{0}/{1}'.format(home, path)
+
+def getServerPath(user, path):
+    return '/home/dlf3x/CS3240/{0}/{1}'.format(user, path)
+
+def connect():
+    """Connects to the server using a local password file."""
+    with open('server.txt') as f:
+        data = f.read().splitlines()
+        return pysftp.Connection(host=data[0], username=data[1], password=data[2])
+
+# def download(server, remote_path, local_path):
+#     """Downloads a file from the server."""
+#     server.get(remote_path, local_path)
+
+# def upload(server, remote_path, local_path):
+#     """Uploads a file to the server."""
+#     server.put(local_path, remote_path)
+
+
+# make a function to execute SQL queries
+
 class ClientFactory(protocol.ClientFactory):
     def __init__(self, path, user):
         self._path = filepath.FilePath(path)
         self._user = user
         self._protocol = protocol.Protocol()
         self._notifier = inotify.INotify()
+        # reactor.callInThread(self._connection = connect())
+
+    def startFactory(self):
+        self._connection = connect()
         self._notifier.startReading()
         self._notifier.watch(self._path, autoAdd=True, callbacks=[self.onChange], recursive=True)
 
     def onChange(self, watch, fpath, mask):
-        index = fpath.path.find('onedir')
-        path = fpath.path[index:]
+        path = adjustPath(fpath.path)
         cmd = ' '.join(inotify.humanReadableMask(mask))
         self.dispatch(path, cmd)
 
@@ -34,7 +66,8 @@ class ClientFactory(protocol.ClientFactory):
             'create' : self._handleCreate,
             'create is_dir' : self._handleCreateDir,
             'delete' : self._handleDelete,
-            'delete is_dir' : self._handleDeleteDir
+            'delete is_dir' : self._handleDeleteDir,
+            'modify' : self._handleModify,
         }
         commands.get(cmd, lambda _: None)(path)
 
@@ -44,6 +77,8 @@ class ClientFactory(protocol.ClientFactory):
                 'cmd' : 'touch',
                 'path' : path,
             })
+        cursor.execute("INSERT INTO file VALUES (%s, %s, %s)", (path, self._user, 0))
+        cursor.execute("INSERT INTO log VALUES (%s, %s, %s, %s)", (self._user, path, datetime.now(), 'create'))
         self._protocol.transport.write(data)
 
     def _handleCreateDir(self, path):
@@ -60,6 +95,8 @@ class ClientFactory(protocol.ClientFactory):
                 'cmd' : 'rm',
                 'path' : path,
             })
+        cursor.execute("DELETE FROM file WHERE path = %s AND user_id = %s", (path, self._user))
+        cursor.execute("INSERT INTO log VALUES (%s, %s, %s, %s)", (self._user, path, datetime.now(), 'delete'))
         self._protocol.transport.write(data)
 
     def _handleDeleteDir(self, path):
@@ -68,7 +105,19 @@ class ClientFactory(protocol.ClientFactory):
                 'cmd' : 'rmdir',
                 'path' : path,
             })
-        self._protocol.transport.write(data)        
+        absolute_path = getAbsolutePath(path)
+        for (fpath, _, files) in os.walk(absolute_path):
+            for f in files:
+                final_path = adjustPath(join(fpath, f))
+                cursor.execute("DELETE FROM file WHERE path = %s AND user_id = %s", (final_path, self._user))
+                cursor.execute("INSERT INTO log VALUES (%s, %s, %s, %s)", (self._user, final_path, datetime.now(), 'delete'))
+        self._protocol.transport.write(data)
+
+    def _handleModify(self, path):
+        absolute_path = getAbsolutePath(path)
+        server_path = getServerPath(self._user, path)
+        cursor.execute("INSERT INTO log VALUES (%s, %s, %s, %s", (self._user, path, datetime.now(), 'modify'))
+        self._connection.put(absolute_path, server_path)
 
     def buildProtocol(self, addr):
         return self._protocol

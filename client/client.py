@@ -1,6 +1,7 @@
 import bcrypt, json, MySQLdb, os, sys, time
 from _mysql_exceptions import IntegrityError, OperationalError
 from twisted.internet import protocol, reactor, defer
+from getpass import getpass
 
 # Use global variables to maintain a connection to the database.
 with open('password.txt') as f:
@@ -74,7 +75,7 @@ class ClientProtocol(protocol.Protocol):
         cmd = prompt()
         if cmd == 'create account':
             user = raw_input('Enter a user ID: ')
-            password = raw_input('Enter a password: ')
+            password = getpass('Enter a password: ')
             if create_account(user, password):
                 data = json.dumps({
                     'cmd' : 'create account', 
@@ -85,8 +86,8 @@ class ClientProtocol(protocol.Protocol):
             reactor.callInThread(self.send_data)
         elif cmd == 'change password':
             user = raw_input('Enter a user ID: ')
-            current_pass = raw_input('Enter current password: ')
-            new_pass = raw_input('Enter new password: ')
+            current_pass = getpass('Enter current password: ')
+            new_pass = getpass('Enter new password: ')
             update_password(user, current_pass, new_pass):
             reactor.callInThread(self.send_data)       
         elif cmd == 'quit':

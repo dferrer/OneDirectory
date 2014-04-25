@@ -1,5 +1,6 @@
 import bcrypt, MySQLdb, os, sys
 from _mysql_exceptions import IntegrityError, OperationalError
+from getpass import getpass
 
 # Use global variables to maintain a connection to the database.
 with open('password.txt') as f:
@@ -98,7 +99,7 @@ def remove_user_files_aux():
 def change_password_aux():
     """Helper function for change_password()"""
     user = raw_input('Enter a user ID: ')
-    password = raw_input('Enter a password: ')
+    password = getpass('Enter a password: ')
     change_password(user, password)
 
 def prompt():
