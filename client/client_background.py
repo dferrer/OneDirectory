@@ -1,9 +1,10 @@
 import bcrypt, json, MySQLdb, os, pysftp, re, sys
-from os.path import expanduser, getsize, join
+from os.path import expanduser, getsize, join, isfile, exists
 from twisted.internet import protocol, reactor, inotify
 from twisted.python import filepath
 from getpass import getpass
 from datetime import datetime
+# from protocol import Protocol
 
 # Use global variables to maintain a connection to the database.
 with open('password.txt') as f:
@@ -14,14 +15,14 @@ cursor = db.cursor()
 # Specify server address and port number.
 HOST = '128.143.67.201'
 PORT = 2121
+HOME = expanduser('~')
 
 def adjustPath(path):
     index = path.find('onedir')
     return path[index:]
 
-def getAbsolutePath(path):
-    home = expanduser('~')
-    return '{0}/{1}'.format(home, path)
+def getAbsolutePath(path, user):
+    return '{0}/{1}'.format(HOME, path)
 
 def getServerPath(user, path):
     return '/home/dlf3x/CS3240/{0}/{1}'.format(user, path)
@@ -40,14 +41,58 @@ def connect():
 #     """Uploads a file to the server."""
 #     server.put(local_path, remote_path)
 
+class ClientProtocol(protocol.Protocol):
+    def connectionMade(self):
+        print 'Connected from ' + str(self.transport.getPeer().host)
 
-# make a function to execute SQL queries
+    def dataReceived(self, data):
+        print 'received ' + str(data)
+        received = filter(None, re.split('({.*?})', data))
+        for item in received:
+            message = json.loads(item)
+            self.dispatch(message)
+
+    def dispatch(self, message):
+        user = message['user']
+        cmd = message['cmd']
+        commands = {
+            'touch' : self._handleTouch,
+            'mkdir' : self._handleMkdir,
+            'rm' : self._handleRm,
+            'rmdir' : self._handleRmdir,
+        }
+        commands.get(cmd, lambda _: None)(message, user)
+
+    def _handleTouch(self, message, user):
+        path = message['path']
+        absolute_path = getAbsolutePath(path, user)
+        if not isfile(absolute_path):
+            with open(absolute_path, 'a'):
+                os.utime(absolute_path, None)
+
+    def _handleMkdir(self, message, user):
+        path = message['path']
+        absolute_path = getAbsolutePath(path, user)
+        if not exists(absolute_path):
+            os.mkdir(absolute_path)
+
+    def _handleRm(self, message, user):
+        path = message['path']
+        absolute_path = getAbsolutePath(path, user)
+        if isfile(absolute_path):
+            os.remove(absolute_path)
+            
+    def _handleRmdir(self, message, user):
+        path = message['path']
+        absolute_path = getAbsolutePath(path, user)
+        if exists(absolute_path):
+            rmtree(absolute_path)
 
 class ClientFactory(protocol.ClientFactory):
     def __init__(self, path, user):
         self._path = filepath.FilePath(path)
         self._user = user
-        self._protocol = protocol.Protocol()
+        self._protocol = ClientProtocol()
         self._notifier = inotify.INotify()
         # reactor.callInThread(self._connection = connect())
 
@@ -77,9 +122,11 @@ class ClientFactory(protocol.ClientFactory):
                 'cmd' : 'touch',
                 'path' : path,
             })
-        cursor.execute("INSERT INTO file VALUES (%s, %s, %s)", (path, self._user, 0))
-        cursor.execute("INSERT INTO log VALUES (%s, %s, %s, %s)", (self._user, path, datetime.now(), 'create'))
-        self._protocol.transport.write(data)
+        cursor.execute("SELECT * FROM file WHERE path = %s AND user_id = %s", (path, self._user))
+        if len(cursor.fetchall()) == 0:
+            cursor.execute("INSERT INTO file VALUES (%s, %s, %s)", (path, self._user, 0))
+            cursor.execute("INSERT INTO log VALUES (%s, %s, %s, %s)", (self._user, path, datetime.now(), 'create'))
+            self._protocol.transport.write(data)
 
     def _handleCreateDir(self, path):
         data = json.dumps({
@@ -95,9 +142,11 @@ class ClientFactory(protocol.ClientFactory):
                 'cmd' : 'rm',
                 'path' : path,
             })
-        cursor.execute("DELETE FROM file WHERE path = %s AND user_id = %s", (path, self._user))
-        cursor.execute("INSERT INTO log VALUES (%s, %s, %s, %s)", (self._user, path, datetime.now(), 'delete'))
-        self._protocol.transport.write(data)
+        cursor.execute("SELECT * FROM file WHERE path = %s AND user_id = %s", (path, self._user))
+        if len(cursor.fetchall()) > 0:
+            cursor.execute("DELETE FROM file WHERE path = %s AND user_id = %s", (path, self._user))
+            cursor.execute("INSERT INTO log VALUES (%s, %s, %s, %s)", (self._user, path, datetime.now(), 'delete'))
+            self._protocol.transport.write(data)
 
     def _handleDeleteDir(self, path):
         data = json.dumps({
@@ -105,8 +154,11 @@ class ClientFactory(protocol.ClientFactory):
                 'cmd' : 'rmdir',
                 'path' : path,
             })
-        absolute_path = getAbsolutePath(path)
+        absolute_path = getAbsolutePath(path, None)
         for (fpath, _, files) in os.walk(absolute_path):
+            cursor.execute("SELECT * FROM file WHERE path = %s AND user_id = %s", (adjustPath(join(fpath, files[0])), self._user))
+            if len(cursor.fetchall()) == 0:
+                return
             for f in files:
                 final_path = adjustPath(join(fpath, f))
                 cursor.execute("DELETE FROM file WHERE path = %s AND user_id = %s", (final_path, self._user))
@@ -114,10 +166,12 @@ class ClientFactory(protocol.ClientFactory):
         self._protocol.transport.write(data)
 
     def _handleModify(self, path):
-        absolute_path = getAbsolutePath(path)
-        server_path = getServerPath(self._user, path)
-        cursor.execute("INSERT INTO log VALUES (%s, %s, %s, %s", (self._user, path, datetime.now(), 'modify'))
-        self._connection.put(absolute_path, server_path)
+        exclude = '^.*(swp|swn|swo|tmp|~)$'
+        if not re.match(exclude, path):
+            absolute_path = getAbsolutePath(path, None)
+            server_path = getServerPath(self._user, path)
+            cursor.execute("INSERT INTO log VALUES (%s, %s, %s, %s", (self._user, path, datetime.now(), 'modify'))
+            self._connection.put(absolute_path, server_path)
 
     def buildProtocol(self, addr):
         return self._protocol
@@ -162,8 +216,7 @@ def main():
             break
 
     # Locate the user's onedir folder.
-    home = expanduser('~')
-    path = '{0}/onedir'.format(home)
+    path = '{0}/onedir'.format(HOME)
 
     # Create a factory and run the reactor.
     factory = ClientFactory(path, user)
