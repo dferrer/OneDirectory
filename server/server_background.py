@@ -21,13 +21,16 @@ def adjustPath(path):
 def getAbsolutePath(path, user):
     return '{0}/CS3240/{1}/{2}'.format(HOME, user, path)
 
-# class ServerProtocol(Protocol):
-#     def _getAbsolutePath(self, path, user):
-#         return '{0}/CS3240/{1}/{2}'.format(HOME, user, path)        
-
 class ServerProtocol(protocol.Protocol):
+    def __init__(self, factory):
+        self.factory = factory
+
+    def connectionLost(self):
+        self.factory._protocols.remove(self)
+
     def connectionMade(self):
         print 'Connected from ' + str(self.transport.getPeer().host)
+        self.factory._protocols.append(self)
         
     def dataReceived(self, data):
         print 'received ' + str(data)
@@ -97,7 +100,8 @@ class ServerProtocol(protocol.Protocol):
 class ServerFactory(protocol.ServerFactory):
     def __init__(self, path):
         self._path = filepath.FilePath(path)
-        self._protocol = ServerProtocol()
+        self._protocols = []
+        # self._protocol = ServerProtocol()
         self._notifier = inotify.INotify()
 
     def startFactory(self):
@@ -105,7 +109,7 @@ class ServerFactory(protocol.ServerFactory):
         self._notifier.watch(self._path, autoAdd=True, callbacks=[self.onChange], recursive=True)
 
     def buildProtocol(self, addr):
-        return self._protocol
+        return ServerProtocol(self)
 
     def onChange(self, watch, fpath, mask):
         index = fpath.path.find('onedir')
@@ -136,7 +140,8 @@ class ServerFactory(protocol.ServerFactory):
         if len(cursor.fetchall()) == 0:
             cursor.execute("INSERT INTO file VALUES (%s, %s, %s, %s)", (path, user, 0, 0))
             cursor.execute("INSERT INTO log VALUES (%s, %s, %s, %s)", (user, path, datetime.now(), 'create'))
-            self._protocol.transport.write(data)
+            for proto in self._protocols:
+                proto.transport.write(data)
 
     def _handleCreateDir(self, path, user):
         data = json.dumps({
@@ -144,7 +149,7 @@ class ServerFactory(protocol.ServerFactory):
             'cmd' : 'mkdir',
             'path' : path,
             })
-        self._protocol.transport.write(data)
+        # self._protocol.transport.write(data)
 
     def _handleDelete(self, path, user):
         data = json.dumps({
@@ -156,8 +161,8 @@ class ServerFactory(protocol.ServerFactory):
         if len(cursor.fetchall()) > 0:
             cursor.execute("DELETE FROM file WHERE path = %s AND user_id = %s", (path, user))
             cursor.execute("INSERT INTO log VALUES (%s, %s, %s, %s)", (user, path, datetime.now(), 'delete'))
-            self._protocol.transport.write(data)
-        self._protocol.transport.write(data)
+            # self._protocol.transport.write(data)
+        # self._protocol.transport.write(data)
 
     def _handleDeleteDir(self, path, user):
         data = json.dumps({
@@ -174,7 +179,7 @@ class ServerFactory(protocol.ServerFactory):
                 final_path = adjustPath(join(fpath, f))
                 cursor.execute("DELETE FROM file WHERE path = %s AND user_id = %s", (final_path, user))
                 cursor.execute("INSERT INTO log VALUES (%s, %s, %s, %s)", (user, final_path, datetime.now(), 'delete'))
-        self._protocol.transport.write(data)
+        # self._protocol.transport.write(data)
 
 def main():
     """Creates a factory and runs the reactor"""
