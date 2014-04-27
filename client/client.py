@@ -80,15 +80,14 @@ class ClientProtocol(protocol.Protocol):
                 data = json.dumps({
                     'cmd' : 'create account', 
                     'user' : user, 
-                    'password' : '12345',
                     })
-                self.transport.write(str(data))
+                self.transport.write(data)
             reactor.callInThread(self.send_data)
         elif cmd == 'change password':
             user = raw_input('Enter a user ID: ')
             current_pass = getpass('Enter current password: ')
             new_pass = getpass('Enter new password: ')
-            update_password(user, current_pass, new_pass):
+            update_password(user, current_pass, new_pass)
             reactor.callInThread(self.send_data)       
         elif cmd == 'quit':
             os._exit()
@@ -100,10 +99,6 @@ class ClientProtocol(protocol.Protocol):
         """Executes when client connects to server."""
         print 'Connected to ' + HOST + ':' + str(PORT)
         self.send_data()
-
-    # def dataReceived(self, data):
-    #     """Executes when data is received from the server."""
-    #     self.send_data()
 
 class ClientFactory(protocol.ClientFactory):
     def __init__(self):
