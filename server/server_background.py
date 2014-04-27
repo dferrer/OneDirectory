@@ -5,6 +5,8 @@ from twisted.python import filepath
 from shutil import rmtree
 from datetime import datetime
 from os.path import expanduser, getsize, isfile, join, exists
+from _mysql_exceptions import IntegrityError
+from collections import defaultdict
 
 PORT = 2121
 HOME = expanduser('~')
@@ -25,12 +27,12 @@ class ServerProtocol(protocol.Protocol):
     def __init__(self, factory):
         self.factory = factory
 
-    def connectionLost(self):
-        self.factory._protocols.remove(self)
+    # def connectionLost(self):
+    #     self.factory._protocols.remove(self)
 
-    def connectionMade(self):
-        print 'Connected from ' + str(self.transport.getPeer().host)
-        self.factory._protocols.append(self)
+    # def connectionMade(self):
+    #     print 'Connected from ' + str(self.transport.getPeer().host)
+    #     self.factory._protocols.append(self)
         
     def dataReceived(self, data):
         print 'received ' + str(data)
@@ -43,7 +45,7 @@ class ServerProtocol(protocol.Protocol):
                 i += 1
                 self.dispatchMvFrom(message, message2)
             else:
-                print 'dispatching ' + data['cmd'] ' on file ' + data['path']
+                # print 'dispatching ' + message['cmd'] + ' on file ' + message['path']
                 self.dispatch(message)
 
     def dispatchMvFrom(self, message1, message2):
@@ -65,8 +67,12 @@ class ServerProtocol(protocol.Protocol):
             'rm' : self._handleRm,
             'rmdir' : self._handleRmdir,
             'mv_from' : self._handleRm,
+            'connect' : self._handleConnect,
         }
         commands.get(cmd, lambda a, b: None)(message, user)
+
+    def _handleConnect(self, message, user):
+        self.factory._protocols[user].append(self)
 
     def _handleTouch(self, message, user):
         path = message['path']
@@ -104,9 +110,8 @@ class ServerProtocol(protocol.Protocol):
 class ServerFactory(protocol.ServerFactory):
     def __init__(self, path):
         self._path = filepath.FilePath(path)
-        self._protocols = []
-        # self._protocol = ServerProtocol()
         self._notifier = inotify.INotify()
+        self._protocols = defaultdict(lambda: [])
 
     def startFactory(self):
         self._notifier.startReading()
@@ -143,10 +148,16 @@ class ServerFactory(protocol.ServerFactory):
             })
         # cursor.execute("SELECT * FROM file WHERE path = %s AND user_id = %s", (path, user))
         # if len(cursor.fetchall()) == 0:
-        cursor.execute("INSERT INTO file VALUES (%s, %s, %s, %s)", (path, user, 0, 0))
-        cursor.execute("INSERT INTO log VALUES (%s, %s, %s, %s)", (user, path, datetime.now(), 'create'))
-        print 'There are ' + str(len(self._protocols)) ' clients.'
-        for proto in self._protocols:
+        try:
+            cursor.execute("INSERT INTO file VALUES (%s, %s, %s, %s)", (path, user, 0, 0))
+            cursor.execute("INSERT INTO log VALUES (%s, %s, %s, %s)", (user, path, datetime.now(), 'create'))
+        except IntegrityError:
+            pass
+        print 'There are ' + str(len(self._protocols)) + ' clients.'
+        print self._protocols
+        print user
+        print self._protocols[user]
+        for proto in self._protocols[user]:
             print 'Sending ' + str(data)
             proto.transport.write(data)
 

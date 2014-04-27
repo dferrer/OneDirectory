@@ -4,6 +4,7 @@ from twisted.internet import protocol, reactor, inotify
 from twisted.python import filepath
 from getpass import getpass
 from datetime import datetime
+from shutil import rmtree
 from _mysql_exceptions import IntegrityError
 # from protocol import Protocol
 
@@ -43,8 +44,16 @@ def connect():
 #     server.put(local_path, remote_path)
 
 class ClientProtocol(protocol.Protocol):
+    def __init__(self, factory):
+        self.factory = factory
+
     def connectionMade(self):
         print 'Connected from ' + str(self.transport.getPeer().host)
+        data = json.dumps({
+                'user' : self.factory._user,
+                'cmd' : 'connect',
+            })
+        self.transport.write(data)
 
     def dataReceived(self, data):
         print 'received ' + str(data)
@@ -93,7 +102,7 @@ class ClientFactory(protocol.ClientFactory):
     def __init__(self, path, user):
         self._path = filepath.FilePath(path)
         self._user = user
-        self._protocol = ClientProtocol()
+        self._protocol = ClientProtocol(self)
         self._notifier = inotify.INotify()
         # reactor.callInThread(self._connection = connect())
 
