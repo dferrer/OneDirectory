@@ -11,7 +11,7 @@ cursor = db.cursor()
 
 # Use global variables to specify server address and port number
 HOST = '128.143.67.201'
-PORT = 2121
+PORT = 2222
 
 def encrypt(password):
     """Returns a secure hash of a string."""
@@ -61,6 +61,20 @@ def update_password(user, current_pass, new_pass):
     except TypeError:
         return False
 
+def toggle_autosync(user):
+    """Turns autosync on or off for the user."""
+    cursor.execute("SELECT auto_sync FROM account WHERE user_id = %s", (user,))
+    if cursor.fetchone()[0] == 0:
+	cursor.execture("UPDATE account SET auto_sync = 1 WHERE user_id = %s", (user,))
+        print "Turning on autosync."
+	return True
+    elif cursor.fetchone()[0] == 1:
+	cursor.execture("UPDATE account SET auto_sync = 0 WHERE user_id = %s", (user,))
+        print "Turning off autosync."
+	return True
+    else:
+	return False
+
 def prompt():
     """Prompts the user for a command."""
     return raw_input('\nEnter:\n'
@@ -88,7 +102,10 @@ class ClientProtocol(protocol.Protocol):
             current_pass = getpass('Enter current password: ')
             new_pass = getpass('Enter new password: ')
             update_password(user, current_pass, new_pass)
-            reactor.callInThread(self.send_data)       
+            reactor.callInThread(self.send_data) 
+	elif cmd == 'toggle autosync':
+	    user = raw_input('Enter a user ID: ')
+	    toggle_autosync(user)
         elif cmd == 'quit':
             os._exit()
         else:
