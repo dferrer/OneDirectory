@@ -11,7 +11,7 @@ cursor = db.cursor()
 
 # Use global variables to specify server address and port number
 HOST = '128.143.67.201'
-PORT = 2222
+PORT = 2122
 
 def encrypt(password):
     """Returns a secure hash of a string."""
@@ -61,19 +61,26 @@ def update_password(user, current_pass, new_pass):
     except TypeError:
         return False
 
-def toggle_autosync(user):
+def toggle_autosync(user, password):
     """Turns autosync on or off for the user."""
-    cursor.execute("SELECT auto_sync FROM account WHERE user_id = %s", (user,))
-    if cursor.fetchone()[0] == 0:
-        cursor.execute("UPDATE account SET auto_sync = 1 WHERE user_id = %s", (user,))
-        print "Turning on autosync."
-        return True
-    elif cursor.fetchone()[0] == 1:
-        cursor.execute("UPDATE account SET auto_sync = 0 WHERE user_id = %s", (user,))
-        print "Turning off autosync."
-        return True
-    else:
-        return False
+    try:
+	if is_valid(user, password):
+	    cursor.execute("SELECT auto_sync FROM account WHERE user_id = %s", (user,))
+	    sync = cursor.fetchone()[0]
+    	    if sync == 0:
+        	print "Turning on autosync."
+        	cursor.execute("UPDATE account SET auto_sync = 1 WHERE user_id = %s", (user,))
+		#reactor.run()
+        	return True
+    	    elif sync == 1:
+        	print "Turning off autosync."
+        	cursor.execute("UPDATE account SET auto_sync = 0 WHERE user_id = %s", (user,))
+		#reactor.stop()
+        	return True
+    	else:
+            return False
+    except IntegrityError:
+	    	return False
 
 def prompt():
     """Prompts the user for a command."""
@@ -103,11 +110,13 @@ class ClientProtocol(protocol.Protocol):
             new_pass = getpass('Enter new password: ')
             update_password(user, current_pass, new_pass)
             reactor.callInThread(self.send_data) 
-        elif cmd == 'toggle autosync':
-            user = raw_input('Enter a user ID: ')
-            toggle_autosync(user)
+        elif cmd == 'toggle':
+            user = raw_input('Enter a user ID: ').strip().lower()
+	    password = raw_input('Enter password: ').strip().lower()
+            toggle_autosync(user, password)
+	    reactor.callInThread(self.send_data)
         elif cmd == 'quit':
-            os._exit()
+            os._exit(1)
         else:
             print 'Command "{0}" not found.'.format(cmd)
             reactor.callInThread(self.send_data())
