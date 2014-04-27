@@ -105,6 +105,7 @@ class ClientFactory(protocol.ClientFactory):
     def onChange(self, watch, fpath, mask):
         path = adjustPath(fpath.path)
         cmd = ' '.join(inotify.humanReadableMask(mask))
+        print 'dispatching ' + cmd + ' on file ' + fpath.path
         self.dispatch(path, cmd)
 
     def dispatch(self, path, cmd):
@@ -133,7 +134,11 @@ class ClientFactory(protocol.ClientFactory):
             if len(cursor.fetchall()) == 0:
                 cursor.execute("INSERT INTO file VALUES (%s, %s, %s, %s)", (path, self._user, 0, 0))
                 cursor.execute("INSERT INTO log VALUES (%s, %s, %s, %s)", (self._user, path, datetime.now(), 'create'))
+                print 'sending file ' + str(path)
                 self._protocol.transport.write(data)
+                print 'sent file ' + str(path)
+            else:
+                print 'file alreadys exists in database'
 
     def _handleCreateDir(self, path):
         data = json.dumps({

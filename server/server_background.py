@@ -43,6 +43,7 @@ class ServerProtocol(protocol.Protocol):
                 i += 1
                 self.dispatchMvFrom(message, message2)
             else:
+                print 'dispatching ' + data['cmd'] ' on file ' + data['path']
                 self.dispatch(message)
 
     def dispatchMvFrom(self, message1, message2):
@@ -73,6 +74,9 @@ class ServerProtocol(protocol.Protocol):
         if not isfile(absolute_path):
             with open(absolute_path, 'a'):
                 os.utime(absolute_path, None)
+                print 'made ' + absolute_path
+        else:
+            print absolute_path + ' already exists'
 
     def _handleCreateAccount(self, message, user):
         absolute_path = '{0}/CS3240/{1}/onedir'.format(HOME, user)
@@ -118,6 +122,7 @@ class ServerFactory(protocol.ServerFactory):
         if match:
             user = match.group(1)
             cmd = ' '.join(inotify.humanReadableMask(mask))
+            print 'dispatching ' + cmd + ' on ' + fpath.path
             self.dispatch(path, cmd, user)
 
     def dispatch(self, path, cmd, user):
@@ -136,12 +141,14 @@ class ServerFactory(protocol.ServerFactory):
                 'cmd' : 'touch',
                 'path' : path,
             })
-        cursor.execute("SELECT * FROM file WHERE path = %s AND user_id = %s", (path, user))
-        if len(cursor.fetchall()) == 0:
-            cursor.execute("INSERT INTO file VALUES (%s, %s, %s, %s)", (path, user, 0, 0))
-            cursor.execute("INSERT INTO log VALUES (%s, %s, %s, %s)", (user, path, datetime.now(), 'create'))
-            for proto in self._protocols:
-                proto.transport.write(data)
+        # cursor.execute("SELECT * FROM file WHERE path = %s AND user_id = %s", (path, user))
+        # if len(cursor.fetchall()) == 0:
+        cursor.execute("INSERT INTO file VALUES (%s, %s, %s, %s)", (path, user, 0, 0))
+        cursor.execute("INSERT INTO log VALUES (%s, %s, %s, %s)", (user, path, datetime.now(), 'create'))
+        print 'There are ' + str(len(self._protocols)) ' clients.'
+        for proto in self._protocols:
+            print 'Sending ' + str(data)
+            proto.transport.write(data)
 
     def _handleCreateDir(self, path, user):
         data = json.dumps({
