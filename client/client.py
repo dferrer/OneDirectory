@@ -65,15 +65,15 @@ def toggle_autosync(user):
     """Turns autosync on or off for the user."""
     cursor.execute("SELECT auto_sync FROM account WHERE user_id = %s", (user,))
     if cursor.fetchone()[0] == 0:
-	    cursor.execute("UPDATE account SET auto_sync = 1 WHERE user_id = %s", (user,))
+        cursor.execute("UPDATE account SET auto_sync = 1 WHERE user_id = %s", (user,))
         print "Turning on autosync."
-	    return True
+        return True
     elif cursor.fetchone()[0] == 1:
-	    cursor.execute("UPDATE account SET auto_sync = 0 WHERE user_id = %s", (user,))
+        cursor.execute("UPDATE account SET auto_sync = 0 WHERE user_id = %s", (user,))
         print "Turning off autosync."
-	    return True
+        return True
     else:
-	    return False
+        return False
 
 def prompt():
     """Prompts the user for a command."""
