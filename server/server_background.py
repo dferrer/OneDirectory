@@ -32,9 +32,24 @@ class ServerProtocol(protocol.Protocol):
     def dataReceived(self, data):
         print 'received ' + str(data)
         received = filter(None, re.split('({.*?})', data))
-        for item in received:
+        for i in range(len(received)):
+            item = received[i]
             message = json.loads(item)
-            self.dispatch(message)
+            if message['cmd'] == 'mv_from' && i + 1 < len(received) && json.loads(received[i+1]['cmd'] == 'mv_to'):
+                message2 = json.loads(received[i+1])
+                self.dispathMvFrom(message, message2)
+            else:
+                self.dispatch(message)
+
+    def dispatchMvFrom(self, message1, message2):
+        user = message1['user']
+        self._handleRm(message1, user)
+        # path1 = message1['path']
+        # path2 = message2['path']
+        # user = message1['user']
+        # absolute_path1 = getAbsolutePath(path1, user)
+        # absolute_path2 = getAbsolutePath(path2, user)
+
 
     def dispatch(self, message):
         user = message['user']
@@ -45,6 +60,7 @@ class ServerProtocol(protocol.Protocol):
             'mkdir' : self._handleMkdir,
             'rm' : self._handleRm,
             'rmdir' : self._handleRmdir,
+            'mv_from' : self._handleRm,
         }
         commands.get(cmd, lambda a, b: None)(message, user)
 
@@ -96,6 +112,7 @@ class ServerFactory(protocol.ServerFactory):
         path = fpath.path[index:]
         user = re.search('CS3240/(.*)/onedir', fpath.path).group(1)
         cmd = ' '.join(inotify.humanReadableMask(mask))
+        print cmd
         self.dispatch(path, cmd, user)
 
     def dispatch(self, path, cmd, user):
@@ -116,7 +133,7 @@ class ServerFactory(protocol.ServerFactory):
             })
         cursor.execute("SELECT * FROM file WHERE path = %s AND user_id = %s", (path, user))
         if len(cursor.fetchall()) == 0:
-            cursor.execute("INSERT INTO file VALUES (%s, %s, %s)", (path, user, 0))
+            cursor.execute("INSERT INTO file VALUES (%s, %s, %s, %s)", (path, user, 0, 0))
             cursor.execute("INSERT INTO log VALUES (%s, %s, %s, %s)", (user, path, datetime.now(), 'create'))
             self._protocol.transport.write(data)
 

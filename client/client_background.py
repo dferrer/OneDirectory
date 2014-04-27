@@ -4,6 +4,7 @@ from twisted.internet import protocol, reactor, inotify
 from twisted.python import filepath
 from getpass import getpass
 from datetime import datetime
+from _mysql_exceptions import IntegrityError
 # from protocol import Protocol
 
 # Use global variables to maintain a connection to the database.
@@ -112,7 +113,11 @@ class ClientFactory(protocol.ClientFactory):
             'create is_dir' : self._handleCreateDir,
             'delete' : self._handleDelete,
             'delete is_dir' : self._handleDeleteDir,
-            'modify' : self._handleModify,
+            'moved_from' : self._handleMovedFrom,
+            # 'moved_from is_dir' : self._handleMovedFromDir,
+            'moved_to' : self._handleMovedTo,
+            # 'moved_to is_dir' : self._handleMovedToDir,
+            # 'modify' : self._handleModify,
         }
         commands.get(cmd, lambda _: None)(path)
 
@@ -122,11 +127,14 @@ class ClientFactory(protocol.ClientFactory):
                 'cmd' : 'touch',
                 'path' : path,
             })
-        cursor.execute("SELECT * FROM file WHERE path = %s AND user_id = %s", (path, self._user))
-        if len(cursor.fetchall()) == 0:
-            cursor.execute("INSERT INTO file VALUES (%s, %s, %s)", (path, self._user, 0))
-            cursor.execute("INSERT INTO log VALUES (%s, %s, %s, %s)", (self._user, path, datetime.now(), 'create'))
-            self._protocol.transport.write(data)
+        exclude = r'^.*(swp|swn|swo|swx|tmp)$'
+        print 'regex: {0} \t string: {1}'.format(exclude, path)
+        if not re.match(exclude, path):
+            cursor.execute("SELECT * FROM file WHERE path = %s AND user_id = %s", (path, self._user))
+            if len(cursor.fetchall()) == 0:
+                cursor.execute("INSERT INTO file VALUES (%s, %s, %s, %s)", (path, self._user, 0, 0))
+                cursor.execute("INSERT INTO log VALUES (%s, %s, %s, %s)", (self._user, path, datetime.now(), 'create'))
+                self._protocol.transport.write(data)
 
     def _handleCreateDir(self, path):
         data = json.dumps({
@@ -166,12 +174,36 @@ class ClientFactory(protocol.ClientFactory):
         self._protocol.transport.write(data)
 
     def _handleModify(self, path):
-        exclude = '^.*(swp|swn|swo|tmp|~)$'
+        exclude = r'^.*(swp|swn|swo|swx|tmp)$'
         if not re.match(exclude, path):
             absolute_path = getAbsolutePath(path, None)
             server_path = getServerPath(self._user, path)
-            cursor.execute("INSERT INTO log VALUES (%s, %s, %s, %s", (self._user, path, datetime.now(), 'modify'))
+            # cursor.execute("SELECT modified FROM file WHERE path = %s AND user_id = %s", (path, self._user))
+            # count = cursor.fetchone()[0]
+            # if count == 0:
+            # cursor.execute("UPDATE file SET modified = %s WHERE path = %s AND user_id = %s", (0, path, self._user))
+            try:
+                cursor.execute("INSERT INTO log VALUES (%s, %s, %s, %s)", (self._user, path, datetime.now(), 'modify'))
+            except IntegrityError:
+                return
             self._connection.put(absolute_path, server_path)
+            # else:
+
+    def _handleMovedFrom(self, path):
+        data = json.dumps({
+                'user' : self._user,
+                'cmd' : 'mv_from',
+                'path' : path,
+            })
+        self._protocol.transport.write(data)
+
+    def _handleMovedTo(self, path):
+        data = json.dumps({
+                'user' : self._user,
+                'cmd' : 'mv_to',
+                'path' : path,
+            })
+        self._protocol.transport.write(data)
 
     def buildProtocol(self, addr):
         return self._protocol
