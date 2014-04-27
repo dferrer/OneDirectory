@@ -70,8 +70,15 @@ class ClientProtocol(protocol.Protocol):
             'mkdir' : self._handleMkdir,
             'rm' : self._handleRm,
             'rmdir' : self._handleRmdir,
+            'change' : self._handleChange,
         }
         commands.get(cmd, lambda _: None)(message, user)
+
+    def _handleChange(self, message, user):
+        path = message['path']
+        local_path = getAbsolutePath(path, user)
+        remote_path = getServerPath(user, path)
+        self.factory._connection.get(remote_path, local_path)
 
     def _handleTouch(self, message, user):
         path = message['path']
@@ -114,7 +121,7 @@ class ClientFactory(protocol.ClientFactory):
     def onChange(self, watch, fpath, mask):
         path = adjustPath(fpath.path)
         cmd = ' '.join(inotify.humanReadableMask(mask))
-        print 'dispatching ' + cmd + ' on file ' + fpath.path
+        print cmd, path
         self.dispatch(path, cmd)
 
     def dispatch(self, path, cmd):
@@ -127,7 +134,7 @@ class ClientFactory(protocol.ClientFactory):
             # 'moved_from is_dir' : self._handleMovedFromDir,
             'moved_to' : self._handleMovedTo,
             # 'moved_to is_dir' : self._handleMovedToDir,
-            # 'modify' : self._handleModify,
+            'modify' : self._handleModify,
         }
         commands.get(cmd, lambda _: None)(path)
 
@@ -137,17 +144,13 @@ class ClientFactory(protocol.ClientFactory):
                 'cmd' : 'touch',
                 'path' : path,
             })
-        exclude = r'^.*(swp|swn|swo|swx|tmp)$'
+        exclude = r'^onedir/(\d+)|(.*(swp|swn|swo|swx|tmp))$'
         if not re.match(exclude, path):
             cursor.execute("SELECT * FROM file WHERE path = %s AND user_id = %s", (path, self._user))
             if len(cursor.fetchall()) == 0:
                 cursor.execute("INSERT INTO file VALUES (%s, %s, %s, %s)", (path, self._user, 0, 0))
                 cursor.execute("INSERT INTO log VALUES (%s, %s, %s, %s)", (self._user, path, datetime.now(), 'create'))
-                print 'sending file ' + str(path)
                 self._protocol.transport.write(data)
-                print 'sent file ' + str(path)
-            else:
-                print 'file alreadys exists in database'
 
     def _handleCreateDir(self, path):
         data = json.dumps({
@@ -163,11 +166,16 @@ class ClientFactory(protocol.ClientFactory):
                 'cmd' : 'rm',
                 'path' : path,
             })
-        cursor.execute("SELECT * FROM file WHERE path = %s AND user_id = %s", (path, self._user))
-        if len(cursor.fetchall()) > 0:
-            cursor.execute("DELETE FROM file WHERE path = %s AND user_id = %s", (path, self._user))
-            cursor.execute("INSERT INTO log VALUES (%s, %s, %s, %s)", (self._user, path, datetime.now(), 'delete'))
-            self._protocol.transport.write(data)
+        exclude = r'^onedir/(\d+)|(.*(swp|swn|swo|swx|tmp))$'
+        if not re.match(exclude, path):
+            cursor.execute("SELECT * FROM file WHERE path = %s AND user_id = %s", (path, self._user))
+            if len(cursor.fetchall()) > 0:
+                try:
+                    cursor.execute("DELETE FROM file WHERE path = %s AND user_id = %s", (path, self._user))
+                    cursor.execute("INSERT INTO log VALUES (%s, %s, %s, %s)", (self._user, path, datetime.now(), 'delete'))
+                except IntegrityError:
+                    pass
+                self._protocol.transport.write(data)
 
     def _handleDeleteDir(self, path):
         data = json.dumps({
@@ -187,7 +195,7 @@ class ClientFactory(protocol.ClientFactory):
         self._protocol.transport.write(data)
 
     def _handleModify(self, path):
-        exclude = r'^.*(swp|swn|swo|swx|tmp)$'
+        exclude = r'^onedir/(\d+)|(.*(swp|swn|swo|swx|tmp))$'
         if not re.match(exclude, path):
             absolute_path = getAbsolutePath(path, None)
             server_path = getServerPath(self._user, path)
@@ -211,12 +219,15 @@ class ClientFactory(protocol.ClientFactory):
         self._protocol.transport.write(data)
 
     def _handleMovedTo(self, path):
-        data = json.dumps({
-                'user' : self._user,
-                'cmd' : 'mv_to',
-                'path' : path,
-            })
-        self._protocol.transport.write(data)
+        absolute_path = getAbsolutePath(path, None)
+        server_path = getServerPath(self._user, path)
+        self._connection.put(absolute_path, server_path)
+        # data = json.dumps({
+        #         'user' : self._user,
+        #         'cmd' : 'mv_to',
+        #         'path' : path,
+        #     })
+        # self._protocol.transport.write(data)
 
     def buildProtocol(self, addr):
         return self._protocol

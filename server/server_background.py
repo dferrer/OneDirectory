@@ -30,10 +30,6 @@ class ServerProtocol(protocol.Protocol):
     # def connectionLost(self):
     #     self.factory._protocols.remove(self)
 
-    # def connectionMade(self):
-    #     print 'Connected from ' + str(self.transport.getPeer().host)
-    #     self.factory._protocols.append(self)
-        
     def dataReceived(self, data):
         print 'received ' + str(data)
         received = filter(None, re.split('({.*?})', data))
@@ -45,7 +41,6 @@ class ServerProtocol(protocol.Protocol):
                 i += 1
                 self.dispatchMvFrom(message, message2)
             else:
-                # print 'dispatching ' + message['cmd'] + ' on file ' + message['path']
                 self.dispatch(message)
 
     def dispatchMvFrom(self, message1, message2):
@@ -54,7 +49,7 @@ class ServerProtocol(protocol.Protocol):
         path2 = message2['path']
         absolute_path1 = getAbsolutePath(path1, user)
         absolute_path2 = getAbsolutePath(path2, user)
-        if isfile(absolute_path1):
+        if isfile(absolute_path1) and not absolute_path2[-1] == '~':
             os.rename(absolute_path1, absolute_path2)
 
     def dispatch(self, message):
@@ -80,9 +75,6 @@ class ServerProtocol(protocol.Protocol):
         if not isfile(absolute_path):
             with open(absolute_path, 'a'):
                 os.utime(absolute_path, None)
-                print 'made ' + absolute_path
-        else:
-            print absolute_path + ' already exists'
 
     def _handleCreateAccount(self, message, user):
         absolute_path = '{0}/CS3240/{1}/onedir'.format(HOME, user)
@@ -127,7 +119,6 @@ class ServerFactory(protocol.ServerFactory):
         if match:
             user = match.group(1)
             cmd = ' '.join(inotify.humanReadableMask(mask))
-            print 'dispatching ' + cmd + ' on ' + fpath.path
             self.dispatch(path, cmd, user)
 
     def dispatch(self, path, cmd, user):
@@ -136,9 +127,22 @@ class ServerFactory(protocol.ServerFactory):
             'create is_dir' : self._handleCreateDir,
             'delete' : self._handleDelete,
             'delete is_dir' : self._handleDeleteDir,
-            # 'modify' : self._handleModify,
+            'modify' : self._handleModify,
         }
         commands.get(cmd, lambda a, b: None)(path, user)
+
+    def _handleModify(self, path, user):
+        data = json.dumps({
+                'user' : user,
+                'cmd' : 'change',
+                'path' : path,
+            })
+        try:
+            cursor.execute("INSERT INTO log VALUES (%s, %s, %s, %s)", (user, path, datetime.now(), 'modify'))
+        except IntegrityError:
+            return
+        for proto in self._protocols[user]:
+            proto.transport.write(data)
 
     def _handleCreate(self, path, user):
         data = json.dumps({
@@ -146,19 +150,12 @@ class ServerFactory(protocol.ServerFactory):
                 'cmd' : 'touch',
                 'path' : path,
             })
-        # cursor.execute("SELECT * FROM file WHERE path = %s AND user_id = %s", (path, user))
-        # if len(cursor.fetchall()) == 0:
         try:
             cursor.execute("INSERT INTO file VALUES (%s, %s, %s, %s)", (path, user, 0, 0))
             cursor.execute("INSERT INTO log VALUES (%s, %s, %s, %s)", (user, path, datetime.now(), 'create'))
         except IntegrityError:
             pass
-        print 'There are ' + str(len(self._protocols)) + ' clients.'
-        print self._protocols
-        print user
-        print self._protocols[user]
         for proto in self._protocols[user]:
-            print 'Sending ' + str(data)
             proto.transport.write(data)
 
     def _handleCreateDir(self, path, user):
@@ -167,7 +164,8 @@ class ServerFactory(protocol.ServerFactory):
             'cmd' : 'mkdir',
             'path' : path,
             })
-        # self._protocol.transport.write(data)
+        for proto in self._protocols[user]:
+            proto.transport.write(data)
 
     def _handleDelete(self, path, user):
         data = json.dumps({
@@ -175,12 +173,17 @@ class ServerFactory(protocol.ServerFactory):
             'cmd' : 'rm',
             'path' : path,
             })
-        cursor.execute("SELECT * FROM file WHERE path = %s AND user_id = %s", (path, user))
-        if len(cursor.fetchall()) > 0:
-            cursor.execute("DELETE FROM file WHERE path = %s AND user_id = %s", (path, user))
-            cursor.execute("INSERT INTO log VALUES (%s, %s, %s, %s)", (user, path, datetime.now(), 'delete'))
-            # self._protocol.transport.write(data)
-        # self._protocol.transport.write(data)
+        exclude = r'^onedir/(\d+)|(.*(swp|swn|swo|swx|tmp))$'
+        if not re.match(exclude, path):
+            cursor.execute("SELECT * FROM file WHERE path = %s AND user_id = %s", (path, user))
+            if len(cursor.fetchall()) > 0:
+                try:
+                    cursor.execute("DELETE FROM file WHERE path = %s AND user_id = %s", (path, user))
+                    cursor.execute("INSERT INTO log VALUES (%s, %s, %s, %s)", (user, path, datetime.now(), 'delete'))
+                except IntegrityError:
+                    pass
+            for proto in self._protocols[user]:
+                proto.transport.write(data)
 
     def _handleDeleteDir(self, path, user):
         data = json.dumps({
@@ -197,7 +200,8 @@ class ServerFactory(protocol.ServerFactory):
                 final_path = adjustPath(join(fpath, f))
                 cursor.execute("DELETE FROM file WHERE path = %s AND user_id = %s", (final_path, user))
                 cursor.execute("INSERT INTO log VALUES (%s, %s, %s, %s)", (user, final_path, datetime.now(), 'delete'))
-        # self._protocol.transport.write(data)
+        for proto in self._protocols[user]:
+            proto.transport.write(data)
 
 def main():
     """Creates a factory and runs the reactor"""
