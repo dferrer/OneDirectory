@@ -128,7 +128,6 @@ class ClientFactory(protocol.ClientFactory):
                 'path' : path,
             })
         exclude = r'^.*(swp|swn|swo|swx|tmp)$'
-        print 'regex: {0} \t string: {1}'.format(exclude, path)
         if not re.match(exclude, path):
             cursor.execute("SELECT * FROM file WHERE path = %s AND user_id = %s", (path, self._user))
             if len(cursor.fetchall()) == 0:

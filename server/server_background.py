@@ -32,24 +32,24 @@ class ServerProtocol(protocol.Protocol):
     def dataReceived(self, data):
         print 'received ' + str(data)
         received = filter(None, re.split('({.*?})', data))
-        for i in range(len(received)):
+        for i in xrange(len(received)):
             item = received[i]
             message = json.loads(item)
-            if message['cmd'] == 'mv_from' && i + 1 < len(received) && json.loads(received[i+1]['cmd'] == 'mv_to'):
+            if message['cmd'] == 'mv_from' and i + 1 < len(received) and json.loads(received[i+1])['cmd'] == 'mv_to':
                 message2 = json.loads(received[i+1])
-                self.dispathMvFrom(message, message2)
+                i += 1
+                self.dispatchMvFrom(message, message2)
             else:
                 self.dispatch(message)
 
     def dispatchMvFrom(self, message1, message2):
         user = message1['user']
-        self._handleRm(message1, user)
-        # path1 = message1['path']
-        # path2 = message2['path']
-        # user = message1['user']
-        # absolute_path1 = getAbsolutePath(path1, user)
-        # absolute_path2 = getAbsolutePath(path2, user)
-
+        path1 = message1['path']
+        path2 = message2['path']
+        absolute_path1 = getAbsolutePath(path1, user)
+        absolute_path2 = getAbsolutePath(path2, user)
+        if isfile(absolute_path1):
+            os.rename(absolute_path1, absolute_path2)
 
     def dispatch(self, message):
         user = message['user']
@@ -110,10 +110,11 @@ class ServerFactory(protocol.ServerFactory):
     def onChange(self, watch, fpath, mask):
         index = fpath.path.find('onedir')
         path = fpath.path[index:]
-        user = re.search('CS3240/(.*)/onedir', fpath.path).group(1)
-        cmd = ' '.join(inotify.humanReadableMask(mask))
-        print cmd
-        self.dispatch(path, cmd, user)
+        match = re.search('CS3240/(.*)/onedir', fpath.path)
+        if match:
+            user = match.group(1)
+            cmd = ' '.join(inotify.humanReadableMask(mask))
+            self.dispatch(path, cmd, user)
 
     def dispatch(self, path, cmd, user):
         commands = {
