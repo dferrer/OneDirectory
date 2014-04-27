@@ -8,7 +8,7 @@ from os.path import expanduser, getsize, isfile, join, exists
 from _mysql_exceptions import IntegrityError
 from collections import defaultdict
 
-PORT = 2121
+PORT = 2222
 HOME = expanduser('~')
 
 with open('password.txt') as f:

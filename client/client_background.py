@@ -16,7 +16,7 @@ cursor = db.cursor()
 
 # Specify server address and port number.
 HOST = '128.143.67.201'
-PORT = 2121
+PORT = 2222
 HOME = expanduser('~')
 
 def adjustPath(path):
