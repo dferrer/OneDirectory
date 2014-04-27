@@ -11,7 +11,7 @@ cursor = db.cursor()
 
 # Use global variables to specify server address and port number
 HOST = '128.143.67.201'
-PORT = 2121
+PORT = 2222
 
 def encrypt(password):
     """Returns a secure hash of a string."""
@@ -60,6 +60,24 @@ def update_password(user, current_pass, new_pass):
             return False
     except TypeError:
         return False
+
+def activate_autosync(user):
+    """Activates autosync for the user."""
+    cursor.execute("SELECT auto_sync FROM account WHERE user_id = %s", (user,))
+    if cursor.fetchone()[0] == 0:
+	cursor.execture("UPDATE account SET auto_sync = 1 WHERE user_id = %s", (user,))
+	return True
+    else:
+	return False
+
+def deactivate_autosync(user):
+    """Deactivates autosync for the user."""
+    cursor.execute("SELECT auto_sync FROM account WHERE user_id = %s", (user,))
+    if cursor.fetchone()[0] == 1:
+	cursor.execture("UPDATE account SET auto_sync = 0 WHERE user_id = %s", (user,))
+	return True
+    else:
+	return False
 
 def prompt():
     """Prompts the user for a command."""
