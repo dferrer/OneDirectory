@@ -2,6 +2,7 @@ import bcrypt, json, MySQLdb, os, sys
 from _mysql_exceptions import IntegrityError, OperationalError
 from twisted.internet import protocol, reactor
 from getpass import getpass
+from os.path import expanduser
 
 with open('hidden.txt') as f:
     data = f.read().splitlines()
@@ -12,6 +13,7 @@ with open('hidden.txt') as f:
     DBHOST = data[4]
     DBNAME = data[5]
 
+HOME = expanduser('~')
 db = MySQLdb.connect(host=DBHOST, user=USERNAME, passwd=PASSWORD, db=DBNAME)
 db.autocommit(True)
 cursor = db.cursor()
@@ -67,11 +69,10 @@ def toggle_autosync(user, password):
             if sync == 0:
                 print "Turning on autosync."
                 cursor.execute("UPDATE account SET auto_sync = 1 WHERE user_id = %s", (user,))                
-                local_path = "".join([os.path.expanduser('~'),"/onedir/"])
-                home = expanduser('~')
-                server_path = "{0}@{1}:{2}/CS3240/{3}/onedir/".format(USERNAME, HOST, home, user)
-                cmd1 = "rsync -azu {1} {2}".format(user,server_path,local_path)
-                cmd2 = "rsync -azu {1} {2}".format(user,local_path,server_path)
+                local_path = '{0}/onedir'.format(HOME)
+                server_path = "{0}@{1}:/home/{0}/CS3240/{2}/onedir".format(USERNAME, HOST, user)
+                cmd1 = "rsync -azu {1}/ {2}".format(user,server_path,local_path)
+                cmd2 = "rsync -azu {1}/ {2}".format(user,local_path,server_path)
                 os.system(cmd1)
                 os.system(cmd2)
                 print "Sync done"
