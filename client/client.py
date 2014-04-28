@@ -34,10 +34,10 @@ def create_account(user, password, auto_sync=True):
     """Adds a user's account information to the database and creates an account on the server."""
     try:
         cursor.execute("INSERT INTO account VALUES (%s, %s, %s)", (user, encrypt(password), auto_sync))
-        print "Added user " + user + " to the database."
+        print "Added user {0} to the database.".format(user)
         return True
     except IntegrityError:
-        print "Error: user " + user + " already exists."
+        print "Error: user {0} already exists.".format(user)
         return False
 
 def get_password(user):
@@ -46,17 +46,17 @@ def get_password(user):
     try:
         return cursor.fetchone()[0]
     except TypeError:
-        print "Error: user " + user + " not found in database."
+        print "Error: user {0} not found in database.".format(user)
 
 def update_password(user, current_pass, new_pass):
     """Updates a user's password upon validation of old password."""
     try:
         if is_valid(user, current_pass):
             cursor.execute("UPDATE account SET password = %s WHERE user_id = %s", (encrypt(new_pass),user))
-            print "Updated password for " + user
+            print "Updated password for {0}".format(user)
             return True
         else:
-            print "Error: entered password does not match actual password for user " + user
+            print "Error: entered password does not match actual password for user {0}".format(user)
             return False
     except TypeError:
         return False
@@ -112,9 +112,9 @@ class ClientProtocol(protocol.Protocol):
             reactor.callInThread(self.send_data) 
         elif cmd == 'toggle autosync':
             user = raw_input('Enter a user ID: ').strip().lower()
-	    password = getpass('Enter password: ').strip().lower()
+	        password = getpass('Enter password: ').strip().lower()
             toggle_autosync(user, password)
-	    reactor.callInThread(self.send_data)
+	        reactor.callInThread(self.send_data)
         elif cmd == 'quit':
             os._exit(1)
         else:
@@ -123,7 +123,7 @@ class ClientProtocol(protocol.Protocol):
 
     def connectionMade(self):
         """Executes when client connects to server."""
-        print 'Connected to ' + HOST + ':' + str(PORT)
+        print 'Connected to {0}:{1}'.format(HOST, PORT)
         self.send_data()
 
 class ClientFactory(protocol.ClientFactory):
@@ -134,12 +134,12 @@ class ClientFactory(protocol.ClientFactory):
         return self._protocol
 
     def clientConnectionLost(self, connector, reason):
-        print 'Lost connection: ' + str(reason)
+        print 'Lost connection: {0}'.format(reason)
         reactor.stop()
         sys.exit(1)
 
     def clientConnectionFailed(self, connector, reason):
-        print 'Connection failed:' + str (reason)
+        print 'Connection failed:{0}'.format(reason)
         reactor.stop()
         sys.exit(1)
 
