@@ -181,7 +181,7 @@ class ClientFactory(protocol.ClientFactory):
                 'cmd' : 'rmdir',
                 'path' : path,
             })
-        absolute_path = getAbsolutePath(path, None)
+        absolute_path = getAbsolutePath(path, self._user)
         for (fpath, _, files) in os.walk(absolute_path):
             cursor.execute("SELECT * FROM file WHERE path = %s AND user_id = %s", (adjustPath(join(fpath, files[0])), self._user))
             if len(cursor.fetchall()) == 0:
@@ -195,15 +195,11 @@ class ClientFactory(protocol.ClientFactory):
     def _handleModify(self, path):
         exclude = r'^onedir/(\d+)|(.*(swp|swn|swo|swx|tmp))$'
         if not re.match(exclude, path):
-            absolute_path = getAbsolutePath(path, None)
+            absolute_path = getAbsolutePath(path, self._user)
             server_path = getServerPath(self._user, path)
-            # cursor.execute("SELECT modified FROM file WHERE path = %s AND user_id = %s", (path, self._user))
-            # count = cursor.fetchone()[0]
-            # if count == 0:
-            # cursor.execute("UPDATE file SET modified = %s WHERE path = %s AND user_id = %s", (0, path, self._user))
             try:
                 size = getsize(absolute_path)
-                cursor.execte("UPDATE file SET size = %s WHERE path = %s AND user_id = %s", (size, path, self._user))
+                cursor.execute("UPDATE file SET size = %s WHERE path = %s AND user_id = %s", (size, path, self._user))
                 cursor.execute("INSERT INTO log VALUES (%s, %s, %s, %s)", (self._user, path, datetime.now(), 'modify'))
             except IntegrityError:
                 return
@@ -219,7 +215,7 @@ class ClientFactory(protocol.ClientFactory):
         self._protocol.transport.write(data)
 
     def _handleMovedTo(self, path):
-        absolute_path = getAbsolutePath(path, None)
+        absolute_path = getAbsolutePath(path, self._user)
         server_path = getServerPath(self._user, path)
         self._connection.put(absolute_path, server_path)
 

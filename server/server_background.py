@@ -178,7 +178,7 @@ class ServerFactory(protocol.ServerFactory):
                 'cmd' : 'rmdir',
                 'path' : path,
             })
-        absolute_path = getAbsolutePath(path, None)
+        absolute_path = getAbsolutePath(path, user)
         for (fpath, _, files) in os.walk(absolute_path):
             cursor.execute("SELECT * FROM file WHERE path = %s AND user_id = %s", (adjustPath(join(fpath, files[0])), user))
             if len(cursor.fetchall()) == 0:
@@ -197,8 +197,8 @@ class ServerFactory(protocol.ServerFactory):
                 'path' : path,
             })
         try:
-            size = getsize(getAbsolutePath(path))
-            cursor.execte("UPDATE file SET size = %s WHERE path = %s AND user_id = %s", (size, path, user))
+            size = getsize(getAbsolutePath(path, user))
+            cursor.execute("UPDATE file SET size = %s WHERE path = %s AND user_id = %s", (size, path, user))
             cursor.execute("INSERT INTO log VALUES (%s, %s, %s, %s)", (user, path, datetime.now(), 'modify'))
         except IntegrityError:
             return
