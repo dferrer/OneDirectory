@@ -11,7 +11,7 @@ cursor = db.cursor()
 
 # Use global variables to specify server address and port number
 HOST = '128.143.67.201'
-PORT = 2222
+PORT = 2121
 
 def encrypt(password):
     """Returns a secure hash of a string."""
@@ -64,23 +64,28 @@ def update_password(user, current_pass, new_pass):
 def toggle_autosync(user, password):
     """Turns autosync on or off for the user."""
     try:
-	if is_valid(user, password):
-	    cursor.execute("SELECT auto_sync FROM account WHERE user_id = %s", (user,))
-	    sync = cursor.fetchone()[0]
-    	    if sync == 0:
-        	    print "Turning on autosync."
-        	    cursor.execute("UPDATE account SET auto_sync = 1 WHERE user_id = %s", (user,))
-		#reactor.run()
-        	    return True
-    	    elif sync == 1:
-        	    print "Turning off autosync."
-        	    cursor.execute("UPDATE account SET auto_sync = 0 WHERE user_id = %s", (user,))
-		#reactor.stop()
-        	    return True
-    	    else:
+        if is_valid(user, password):
+            cursor.execute("SELECT auto_sync FROM account WHERE user_id = %s", (user,))
+            sync = cursor.fetchone()[0]
+            if sync == 0:
+                print "Turning on autosync."
+                cursor.execute("UPDATE account SET auto_sync = 1 WHERE user_id = %s", (user,))                
+                local_path = "".join([os.path.expanduser('~'),"/onedir/"])
+                server_path = "dlf3x@labunix01.cs.virginia.edu:~/CS3240/{0}/onedir/".format(user)
+                cmd1 = "rsync -avzu {1} {2}".format(user,server_path,local_path)
+                cmd2 = "rsync -avzu {1} {2}".format(user,local_path,server_path)
+                os.system(cmd1)
+                os.system(cmd2)
+                print "sync done"
+                return True
+            elif sync == 1:
+                print "Turning off autosync."
+                cursor.execute("UPDATE account SET auto_sync = 0 WHERE user_id = %s", (user,))
+                return True
+            else:
                 return False
     except IntegrityError:
-	    	return False
+            return False
 
 def prompt():
     """Prompts the user for a command."""
