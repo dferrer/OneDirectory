@@ -55,7 +55,6 @@ class ClientProtocol(protocol.Protocol):
         self.transport.write(data)        
 
     def dataReceived(self, data):
-        print 'received ' + str(data)
         received = filter(None, re.split('({.*?})', data))
         for item in received:
             message = json.loads(item)
@@ -145,10 +144,12 @@ class ClientFactory(protocol.ClientFactory):
         exclude = r'^onedir/(\d+)|(.*(swp|swn|swo|swx|tmp))$'
         if not re.match(exclude, path):
             cursor.execute("SELECT * FROM file WHERE path = %s AND user_id = %s", (path, self._user))
-            if len(cursor.fetchall()) == 0:
+            try:
                 cursor.execute("INSERT INTO file VALUES (%s, %s, %s)", (path, self._user, 0))
                 cursor.execute("INSERT INTO log VALUES (%s, %s, %s, %s)", (self._user, path, datetime.now(), 'create'))
-                self._protocol.transport.write(data)
+            except IntegrityError:
+                pass
+            self._protocol.transport.write(data)
 
     def _handleCreateDir(self, path):
         data = json.dumps({
