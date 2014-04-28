@@ -1,5 +1,4 @@
 import json, os, re, MySQLdb
-# from protocol import Protocol
 from twisted.internet import protocol, reactor, inotify
 from twisted.python import filepath
 from shutil import rmtree
@@ -8,7 +7,7 @@ from os.path import expanduser, getsize, isfile, join, exists
 from _mysql_exceptions import IntegrityError
 from collections import defaultdict
 
-PORT = 2222
+PORT = 2121
 HOME = expanduser('~')
 
 with open('password.txt') as f:
@@ -26,9 +25,6 @@ def getAbsolutePath(path, user):
 class ServerProtocol(protocol.Protocol):
     def __init__(self, factory):
         self.factory = factory
-
-    # def connectionLost(self):
-    #     self.factory._protocols.remove(self)
 
     def dataReceived(self, data):
         print 'received ' + str(data)
@@ -63,11 +59,15 @@ class ServerProtocol(protocol.Protocol):
             'rmdir' : self._handleRmdir,
             'mv_from' : self._handleRm,
             'connect' : self._handleConnect,
+            'connect_lost' : self._handleConnectLost,
         }
         commands.get(cmd, lambda a, b: None)(message, user)
 
     def _handleConnect(self, message, user):
         self.factory._protocols[user].append(self)
+
+    def _handleConnectLost(self, message, user):
+        self.factory._protocols[user].remove(self)
 
     def _handleTouch(self, message, user):
         path = message['path']

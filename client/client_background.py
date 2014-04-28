@@ -6,7 +6,6 @@ from getpass import getpass
 from datetime import datetime
 from shutil import rmtree
 from _mysql_exceptions import IntegrityError
-# from protocol import Protocol
 
 # Use global variables to maintain a connection to the database.
 with open('password.txt') as f:
@@ -16,7 +15,7 @@ cursor = db.cursor()
 
 # Specify server address and port number.
 HOST = '128.143.67.201'
-PORT = 2222
+PORT = 2121
 HOME = expanduser('~')
 
 def adjustPath(path):
@@ -35,14 +34,6 @@ def connect():
         data = f.read().splitlines()
         return pysftp.Connection(host=data[0], username=data[1], password=data[2])
 
-# def download(server, remote_path, local_path):
-#     """Downloads a file from the server."""
-#     server.get(remote_path, local_path)
-
-# def upload(server, remote_path, local_path):
-#     """Uploads a file to the server."""
-#     server.put(local_path, remote_path)
-
 class ClientProtocol(protocol.Protocol):
     def __init__(self, factory):
         self.factory = factory
@@ -54,6 +45,14 @@ class ClientProtocol(protocol.Protocol):
                 'cmd' : 'connect',
             })
         self.transport.write(data)
+
+    def connectionLost(self):
+        print 'Lost connection to ' + str(self.transport.getPeer().host)
+        data = json.dumps({
+                'user' : self.factory._user,
+                'cmd' : 'connect_lost',
+            })
+        self.transport.write(data)        
 
     def dataReceived(self, data):
         print 'received ' + str(data)
@@ -222,12 +221,6 @@ class ClientFactory(protocol.ClientFactory):
         absolute_path = getAbsolutePath(path, None)
         server_path = getServerPath(self._user, path)
         self._connection.put(absolute_path, server_path)
-        # data = json.dumps({
-        #         'user' : self._user,
-        #         'cmd' : 'mv_to',
-        #         'path' : path,
-        #     })
-        # self._protocol.transport.write(data)
 
     def buildProtocol(self, addr):
         return self._protocol
