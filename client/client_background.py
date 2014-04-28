@@ -117,9 +117,11 @@ class ClientFactory(protocol.ClientFactory):
         self._notifier.watch(self._path, autoAdd=True, callbacks=[self.onChange], recursive=True)
 
     def onChange(self, watch, fpath, mask):
-        path = adjustPath(fpath.path)
-        cmd = ' '.join(inotify.humanReadableMask(mask))
-        self.dispatch(path, cmd)
+        cursor.execute("SELECT auto_sync FROM account WHERE user_id = %s", (self._user,))
+        if cursor.fetchone()[0] == 1:
+            path = adjustPath(fpath.path)
+            cmd = ' '.join(inotify.humanReadableMask(mask))
+            self.dispatch(path, cmd)
 
     def dispatch(self, path, cmd):
         commands = {
