@@ -41,16 +41,16 @@ class ClientProtocol(protocol.Protocol):
     def connectionMade(self):
         print 'Connected from {0}'.format(self.transport.getPeer().host)
         data = json.dumps({
-                'user' : self.factory._user,
                 'cmd' : 'connect',
+                'user' : self.factory._user,
             })
         self.transport.write(data)
 
     def connectionLost(self, reason):
         print 'Lost connection to {0}'.format(self.transport.getPeer().host)
         data = json.dumps({
-                'user' : self.factory._user,
                 'cmd' : 'connect_lost',
+                'user' : self.factory._user,
             })
         self.transport.write(data)        
 
@@ -137,8 +137,8 @@ class ClientFactory(protocol.ClientFactory):
 
     def _handleCreate(self, path):
         data = json.dumps({
-                'user' : self._user,
                 'cmd' : 'touch',
+                'user' : self._user,
                 'path' : path,
             })
         exclude = r'^onedir/(\d+)|(.*(swp|swn|swo|swx|tmp))$'
@@ -153,16 +153,16 @@ class ClientFactory(protocol.ClientFactory):
 
     def _handleCreateDir(self, path):
         data = json.dumps({
-                'user' : self._user,
                 'cmd' : 'mkdir',
+                'user' : self._user,
                 'path' : path,
             })
         self._protocol.transport.write(data)
 
     def _handleDelete(self, path):
         data = json.dumps({
-                'user' : self._user,
                 'cmd' : 'rm',
+                'user' : self._user,
                 'path' : path,
             })
         exclude = r'^onedir/(\d+)|(.*(swp|swn|swo|swx|tmp))$'
@@ -178,8 +178,8 @@ class ClientFactory(protocol.ClientFactory):
 
     def _handleDeleteDir(self, path):
         data = json.dumps({
-                'user' : self._user,
                 'cmd' : 'rmdir',
+                'user' : self._user,
                 'path' : path,
             })
         absolute_path = getAbsolutePath(path, self._user)
@@ -209,8 +209,8 @@ class ClientFactory(protocol.ClientFactory):
 
     def _handleMovedFrom(self, path):
         data = json.dumps({
-                'user' : self._user,
                 'cmd' : 'mv_from',
+                'user' : self._user,
                 'path' : path,
             })
         self._protocol.transport.write(data)
