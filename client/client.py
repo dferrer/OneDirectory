@@ -1,24 +1,25 @@
-import bcrypt, json, MySQLdb, os, sys, time
+import bcrypt, json, MySQLdb, os, sys
 from _mysql_exceptions import IntegrityError, OperationalError
-from twisted.internet import protocol, reactor, defer
+from twisted.internet import protocol, reactor
 from getpass import getpass
 
-# Use global variables to maintain a connection to the database.
-with open('password.txt') as f:
-    db = MySQLdb.connect(host="dbm2.itc.virginia.edu", user="dlf3x", passwd=f.read().strip(), db="cs3240onedir")
+with open('hidden.txt') as f:
+    data = f.read().splitlines()
+    HOST = data[0]
+    PORT = int(data[1])
+    USERNAME = data[2]
+    PASSWORD = data[3]
+    DBHOST = data[4]
+    DBNAME = data[5]
+
+db = MySQLdb.connect(host=DBHOST, user=USERNAME, passwd=PASSWORD, db=DBNAME)
 db.autocommit(True)
 cursor = db.cursor()
 
-# Use global variables to specify server address and port number
-HOST = '128.143.67.201'
-PORT = 2121
-
 def encrypt(password):
-    """Returns a secure hash of a string."""
     return bcrypt.hashpw(password, bcrypt.gensalt())
 
 def is_valid(user, password):
-    """Checks if an entered password matches a user's password in the database."""
     encoded = password.encode("utf-8")
     hashed = get_password(user)
     try:
@@ -31,7 +32,6 @@ def is_valid(user, password):
         return False
 
 def create_account(user, password, auto_sync=True):
-    """Adds a user's account information to the database and creates an account on the server."""
     try:
         cursor.execute("INSERT INTO account VALUES (%s, %s, %s)", (user, encrypt(password), auto_sync))
         print "Added user {0} to the database.".format(user)
@@ -41,7 +41,6 @@ def create_account(user, password, auto_sync=True):
         return False
 
 def get_password(user):
-    """Queries the database for a user's password."""
     cursor.execute("SELECT password FROM account WHERE user_id = %s", (user,))
     try:
         return cursor.fetchone()[0]
@@ -49,7 +48,6 @@ def get_password(user):
         print "Error: user {0} not found in database.".format(user)
 
 def update_password(user, current_pass, new_pass):
-    """Updates a user's password upon validation of old password."""
     try:
         if is_valid(user, current_pass):
             cursor.execute("UPDATE account SET password = %s WHERE user_id = %s", (encrypt(new_pass),user))
@@ -62,7 +60,6 @@ def update_password(user, current_pass, new_pass):
         return False
 
 def toggle_autosync(user, password):
-    """Turns autosync on or off for the user."""
     try:
         if is_valid(user, password):
             cursor.execute("SELECT auto_sync FROM account WHERE user_id = %s", (user,))
@@ -71,12 +68,13 @@ def toggle_autosync(user, password):
                 print "Turning on autosync."
                 cursor.execute("UPDATE account SET auto_sync = 1 WHERE user_id = %s", (user,))                
                 local_path = "".join([os.path.expanduser('~'),"/onedir/"])
-                server_path = "dlf3x@labunix01.cs.virginia.edu:~/CS3240/{0}/onedir/".format(user)
-                cmd1 = "rsync -avzu {1} {2}".format(user,server_path,local_path)
-                cmd2 = "rsync -avzu {1} {2}".format(user,local_path,server_path)
+                home = expanduser('~')
+                server_path = "{0}@{1}:{2}/CS3240/{3}/onedir/".format(USERNAME, HOST, home, user)
+                cmd1 = "rsync -azu {1} {2}".format(user,server_path,local_path)
+                cmd2 = "rsync -azu {1} {2}".format(user,local_path,server_path)
                 os.system(cmd1)
                 os.system(cmd2)
-                print "sync done"
+                print "Sync done"
                 return True
             elif sync == 1:
                 print "Turning off autosync."
@@ -88,7 +86,6 @@ def toggle_autosync(user, password):
             return False
 
 def prompt():
-    """Prompts the user for a command."""
     return raw_input('\nEnter:\n'
     + '"Create Account" to create an account\n'
     + '"Change Password" to modify your password\n'
@@ -97,7 +94,6 @@ def prompt():
 
 class ClientProtocol(protocol.Protocol):
     def send_data(self):
-        """Receives a command from stdin and handles it locally or sends it to the server."""
         cmd = prompt()
         if cmd == 'create account':
             user = raw_input('Enter a user ID: ')
@@ -105,7 +101,7 @@ class ClientProtocol(protocol.Protocol):
             if create_account(user, password):
                 data = json.dumps({
                     'cmd' : 'create account', 
-                    'user' : user, 
+                    'user' : user,
                     })
                 self.transport.write(data)
             reactor.callInThread(self.send_data)
@@ -127,7 +123,6 @@ class ClientProtocol(protocol.Protocol):
             reactor.callInThread(self.send_data())
 
     def connectionMade(self):
-        """Executes when client connects to server."""
         print 'Connected to {0}:{1}'.format(HOST, PORT)
         self.send_data()
 
@@ -153,5 +148,4 @@ if __name__ == "__main__":
     reactor.connectTCP(HOST, PORT, factory)
     reactor.run()
 
-# Close the connection to the database.
 db.close()

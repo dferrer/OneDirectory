@@ -1,22 +1,22 @@
-import bcrypt, json, MySQLdb, os, pysftp, re, sys
+import json, MySQLdb, os, pysftp, re, sys
 from os.path import expanduser, getsize, join, isfile, exists
 from twisted.internet import protocol, reactor, inotify
 from twisted.python import filepath
-from getpass import getpass
-from datetime import datetime
 from shutil import rmtree
-from _mysql_exceptions import IntegrityError
 
-# Use global variables to maintain a connection to the database.
-with open('password.txt') as f:
-    db = MySQLdb.connect(host="dbm2.itc.virginia.edu", user="dlf3x", passwd=f.read().strip(), db="cs3240onedir")
+with open('hidden.txt') as f:
+    data = f.read().splitlines()
+    HOST = data[0]
+    PORT = int(data[1])
+    USERNAME = data[2]
+    PASSWORD = data[3]
+    DBHOST = data[4]
+    DBNAME = data[5]
+
+HOME = expanduser('~')
+db = MySQLdb.connect(host=DBHOST, user=USERNAME, passwd=PASSWORD, db=DBNAME)
 db.autocommit(True)
 cursor = db.cursor()
-
-# Specify server address and port number.
-HOST = '128.143.67.201'
-PORT = 2121
-HOME = expanduser('~')
 
 def adjustPath(path):
     index = path.find('onedir')
@@ -26,39 +26,44 @@ def getAbsolutePath(path, user):
     return '{0}/{1}'.format(HOME, path)
 
 def getServerPath(user, path):
-    return '/home/dlf3x/CS3240/{0}/{1}'.format(user, path)
+    return '/home/{0}/CS3240/{1}/{2}'.format(USERNAME, user, path)
 
 def connect():
-    """Connects to the server using a local password file."""
-    with open('server.txt') as f:
-        data = f.read().splitlines()
-        return pysftp.Connection(host=data[0], username=data[1], password=data[2])
+    return pysftp.Connection(host=HOST, username=USERNAME, password=PASSWORD)
 
 class ClientProtocol(protocol.Protocol):
     def __init__(self, factory):
         self.factory = factory
 
     def connectionMade(self):
-        print 'Connected from {0}'.format(self.transport.getPeer().host)
         data = json.dumps({
                 'cmd' : 'connect',
                 'user' : self.factory._user,
             })
         self.transport.write(data)
 
-    def connectionLost(self, reason):
-        print 'Lost connection to {0}'.format(self.transport.getPeer().host)
-        data = json.dumps({
-                'cmd' : 'connect_lost',
-                'user' : self.factory._user,
-            })
-        self.transport.write(data)        
-
     def dataReceived(self, data):
-        received = filter(None, re.split('({.*?})', data))
-        for item in received:
-            message = json.loads(item)
-            self.dispatch(message)
+        cursor.execute("SELECT auto_sync FROM account WHERE user_id = %s", (self.factory._user,))
+        if cursor.fetchone()[0] == 1:
+            received = filter(None, re.split('({.*?})', data))
+            for i in xrange(len(received)):
+                item = received[i]
+                message = json.loads(item)
+                if message['cmd'] == 'mv_from' and i + 1 < len(received) and json.loads(received[i+1])['cmd'] == 'mv_to':
+                    message2 = json.loads(received[i+1])
+                    # i += 1
+                    self.dispatchMvFrom(message, message2)
+                else:
+                    self.dispatch(message)
+
+    def dispatchMvFrom(self, message1, message2):
+        user = message1['user']
+        path1 = message1['path']
+        path2 = message2['path']
+        absolute_path1 = getAbsolutePath(path1, user)
+        absolute_path2 = getAbsolutePath(path2, user)
+        if isfile(absolute_path1) and not absolute_path2[-1] == '~':
+            os.rename(absolute_path1, absolute_path2)
 
     def dispatch(self, message):
         user = message['user']
@@ -68,11 +73,13 @@ class ClientProtocol(protocol.Protocol):
             'mkdir' : self._handleMkdir,
             'rm' : self._handleRm,
             'rmdir' : self._handleRmdir,
-            'change' : self._handleChange,
+            'mv_from' : self._handleRm,
+            'mv_to' : self._handleGet,
+            'get' : self._handleGet,
         }
         commands.get(cmd, lambda _: None)(message, user)
 
-    def _handleChange(self, message, user):
+    def _handleGet(self, message, user):
         path = message['path']
         local_path = getAbsolutePath(path, user)
         remote_path = getServerPath(user, path)
@@ -109,7 +116,6 @@ class ClientFactory(protocol.ClientFactory):
         self._user = user
         self._protocol = ClientProtocol(self)
         self._notifier = inotify.INotify()
-        # reactor.callInThread(self._connection = connect())
 
     def startFactory(self):
         self._connection = connect()
@@ -125,102 +131,61 @@ class ClientFactory(protocol.ClientFactory):
 
     def dispatch(self, path, cmd):
         commands = {
-            'create' : self._handleCreate,
-            'create is_dir' : self._handleCreateDir,
-            'delete' : self._handleDelete,
-            'delete is_dir' : self._handleDeleteDir,
-            'moved_from' : self._handleMovedFrom,
-            # 'moved_from is_dir' : self._handleMovedFromDir,
-            'moved_to' : self._handleMovedTo,
-            # 'moved_to is_dir' : self._handleMovedToDir,
-            'modify' : self._handleModify,
+            'create' : (self._handleCreate, 'touch'),
+            'create is_dir' : (self._sendData, 'mkdir'),
+            'delete' : (self._handleDelete, 'rm'),
+            'delete is_dir' : (self._handleDeleteDir, 'rmdir'),
+            'moved_from' : (self._sendData, 'mv_from'),
+            'moved_to' : (self._handleMovedTo, 'mv_to'),
+            'modify' : (self._handleModify, ''),
         }
-        commands.get(cmd, lambda _: None)(path)
-
-    def _handleCreate(self, path):
-        data = json.dumps({
-                'cmd' : 'touch',
+        (execute, msg) = commands.get(cmd, (None, None))
+        if execute:
+            data = json.dumps({
+                'cmd' : msg,
                 'user' : self._user,
                 'path' : path,
-            })
+                })
+            execute(path, data)
+
+    def _handleCreate(self, path, data):
         exclude = r'^onedir/(\d+)|(.*(swp|swn|swo|swx|tmp))$'
         if not re.match(exclude, path):
-            cursor.execute("SELECT * FROM file WHERE path = %s AND user_id = %s", (path, self._user))
-            try:
-                cursor.execute("INSERT INTO file VALUES (%s, %s, %s)", (path, self._user, 0))
-                cursor.execute("INSERT INTO log VALUES (%s, %s, %s, %s)", (self._user, path, datetime.now(), 'create'))
-            except IntegrityError:
-                pass
+            cursor.execute("INSERT IGNORE INTO file VALUES (%s, %s, %s)", (path, self._user, 0))
+            cursor.execute("INSERT IGNORE INTO log (user_id, path, action) VALUES (%s, %s, %s)", (self._user, path, 'create'))
             self._protocol.transport.write(data)
 
-    def _handleCreateDir(self, path):
-        data = json.dumps({
-                'cmd' : 'mkdir',
-                'user' : self._user,
-                'path' : path,
-            })
-        self._protocol.transport.write(data)
+    def _handleDelete(self, path, data):
+            cursor.execute("DELETE IGNORE FROM file WHERE path = %s AND user_id = %s", (path, self._user))
+            cursor.execute("INSERT IGNORE INTO log (user_id, path, action) VALUES (%s, %s, %s)", (self._user, path, 'delete'))
+            self._protocol.transport.write(data)
 
-    def _handleDelete(self, path):
-        data = json.dumps({
-                'cmd' : 'rm',
-                'user' : self._user,
-                'path' : path,
-            })
-        exclude = r'^onedir/(\d+)|(.*(swp|swn|swo|swx|tmp))$'
-        if not re.match(exclude, path):
-            cursor.execute("SELECT * FROM file WHERE path = %s AND user_id = %s", (path, self._user))
-            if len(cursor.fetchall()) > 0:
-                try:
-                    cursor.execute("DELETE FROM file WHERE path = %s AND user_id = %s", (path, self._user))
-                    cursor.execute("INSERT INTO log VALUES (%s, %s, %s, %s)", (self._user, path, datetime.now(), 'delete'))
-                except IntegrityError:
-                    pass
-                self._protocol.transport.write(data)
-
-    def _handleDeleteDir(self, path):
-        data = json.dumps({
-                'cmd' : 'rmdir',
-                'user' : self._user,
-                'path' : path,
-            })
+    def _handleDeleteDir(self, path, data):
         absolute_path = getAbsolutePath(path, self._user)
         for (fpath, _, files) in os.walk(absolute_path):
-            cursor.execute("SELECT * FROM file WHERE path = %s AND user_id = %s", (adjustPath(join(fpath, files[0])), self._user))
-            if len(cursor.fetchall()) == 0:
-                return
             for f in files:
                 final_path = adjustPath(join(fpath, f))
-                cursor.execute("DELETE FROM file WHERE path = %s AND user_id = %s", (final_path, self._user))
-                cursor.execute("INSERT INTO log VALUES (%s, %s, %s, %s)", (self._user, final_path, datetime.now(), 'delete'))
+                cursor.execute("DELETE IGNORE FROM file WHERE path = %s AND user_id = %s", (final_path, self._user))
+                cursor.execute("INSERT IGNORE INTO log (user_id, path, action) VALUES (%s, %s, %s)", (self._user, final_path, 'delete'))
         self._protocol.transport.write(data)
 
-    def _handleModify(self, path):
+    def _handleModify(self, path, data):
         exclude = r'^onedir/(\d+)|(.*(swp|swn|swo|swx|tmp))$'
         if not re.match(exclude, path):
             absolute_path = getAbsolutePath(path, self._user)
             server_path = getServerPath(self._user, path)
-            try:
-                size = getsize(absolute_path)
-                cursor.execute("UPDATE file SET size = %s WHERE path = %s AND user_id = %s", (size, path, self._user))
-                cursor.execute("INSERT INTO log VALUES (%s, %s, %s, %s)", (self._user, path, datetime.now(), 'modify'))
-            except IntegrityError:
-                return
+            size = getsize(absolute_path)
+            cursor.execute("UPDATE IGNORE file SET size = %s WHERE path = %s AND user_id = %s", (size, path, self._user))
+            cursor.execute("INSERT IGNORE INTO log (user_id, path, action) VALUES (%s, %s, %s)", (self._user, path, 'modify'))
             self._connection.put(absolute_path, server_path)
-            # else:
 
-    def _handleMovedFrom(self, path):
-        data = json.dumps({
-                'cmd' : 'mv_from',
-                'user' : self._user,
-                'path' : path,
-            })
-        self._protocol.transport.write(data)
-
-    def _handleMovedTo(self, path):
+    def _handleMovedTo(self, path, data):
         absolute_path = getAbsolutePath(path, self._user)
         server_path = getServerPath(self._user, path)
         self._connection.put(absolute_path, server_path)
+
+    def _sendData(self, path, data):
+        self._protocol.transport.write(data)
 
     def buildProtocol(self, addr):
         return self._protocol
@@ -233,41 +198,9 @@ class ClientFactory(protocol.ClientFactory):
         reactor.stop()
         sys.exit(1)
 
-def is_valid(user, password):
-    """Checks if an entered password matches a user's password in the database."""
-    encoded = password.encode("utf-8")
-    hashed = get_password(user)
-    try:
-        if bcrypt.hashpw(encoded, hashed) == hashed:
-            return True
-        else:
-            print 'Error: incorrect password for user {0}'.format(user)
-            return False
-    except TypeError:
-        return False
-
-def get_password(user):
-    """Queries the database for a user's password."""
-    global cursor
-    cursor.execute("SELECT password FROM account WHERE user_id = %s", (user,))
-    try:
-        return cursor.fetchone()[0]
-    except TypeError:
-        print "Error: user {0} not found in database.".format(user)
-
 def main():
-    # Prompt user for user ID and password before syncing.
-    while True:
-        user = raw_input('Please enter your user ID: ')
-        password = getpass('Please enter your password: ')
-        if is_valid(user, password):
-            print 'Validated user ID and password. Starting sync.'
-            break
-
-    # Locate the user's onedir folder.
+    user = sys.argv[1]
     path = '{0}/onedir'.format(HOME)
-
-    # Create a factory and run the reactor.
     factory = ClientFactory(path, user)
     reactor.connectTCP(HOST, PORT, factory)
     reactor.run()

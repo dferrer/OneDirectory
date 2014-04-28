@@ -2,16 +2,20 @@ import json, os, re, MySQLdb
 from twisted.internet import protocol, reactor, inotify
 from twisted.python import filepath
 from shutil import rmtree
-from datetime import datetime
 from os.path import expanduser, getsize, isfile, join, exists
 from _mysql_exceptions import IntegrityError
 from collections import defaultdict
 
-PORT = 2121
-HOME = expanduser('~')
+with open('hidden.txt') as f:
+    data = f.read().splitlines()
+    PORT = int(data[1])
+    USERNAME = data[2]
+    PASSWORD = data[3]
+    DBHOST = data[4]
+    DBNAME = data[5]
 
-with open('password.txt') as f:
-    db = MySQLdb.connect(host="dbm2.itc.virginia.edu", user="dlf3x", passwd=f.read().strip(), db="cs3240onedir")
+HOME = expanduser('~')
+db = MySQLdb.connect(host=DBHOST, user=USERNAME, passwd=PASSWORD, db=DBNAME)
 db.autocommit(True)
 cursor = db.cursor()
 
@@ -27,7 +31,6 @@ class ServerProtocol(protocol.Protocol):
         self.factory = factory
 
     def dataReceived(self, data):
-        print 'received ' + str(data)
         received = filter(None, re.split('({.*?})', data))
         for i in xrange(len(received)):
             item = received[i]
@@ -59,15 +62,11 @@ class ServerProtocol(protocol.Protocol):
             'rmdir' : self._handleRmdir,
             'mv_from' : self._handleRm,
             'connect' : self._handleConnect,
-            'connect_lost' : self._handleConnectLost,
         }
         commands.get(cmd, lambda a, b: None)(message, user)
 
     def _handleConnect(self, message, user):
         self.factory._protocols[user].append(self)
-
-    def _handleConnectLost(self, message, user):
-        self.factory._protocols[user].remove(self)
 
     def _handleTouch(self, message, user):
         path = message['path']
@@ -123,85 +122,67 @@ class ServerFactory(protocol.ServerFactory):
 
     def dispatch(self, path, cmd, user):
         commands = {
-            'create' : self._handleCreate,
-            'create is_dir' : self._handleCreateDir,
-            'delete' : self._handleDelete,
-            'delete is_dir' : self._handleDeleteDir,
-            'modify' : self._handleModify,
+            'create' : (self._handleCreate, 'touch'),
+            'create is_dir' : (self._sendData, 'mkdir'),
+            'delete' : (self._handleDelete, 'rm'),
+            'delete is_dir' : (self._handleDeleteDir, 'rmdir'),
+            'moved_from' : (self._sendData, 'mv_from'),
+            # 'moved_from is_dir' : (self._handleMovedFromDir, ),
+            'moved_to' : (self._handleMovedTo, 'mv_to'),
+            # 'moved_to is_dir' : (self._handleMovedToDir, ),
+            'modify' : (self._handleModify, 'get'),
         }
-        commands.get(cmd, lambda a, b: None)(path, user)
-
-    def _handleCreate(self, path, user):
-        data = json.dumps({
+        (execute, msg) = commands.get(cmd, (None, None))
+        if execute:
+            data = json.dumps({
+                'cmd' : msg,
                 'user' : user,
-                'cmd' : 'touch',
                 'path' : path,
-            })
-        try:
-            cursor.execute("INSERT INTO file VALUES (%s, %s, %s)", (path, user, 0))
-            cursor.execute("INSERT INTO log VALUES (%s, %s, %s, %s)", (user, path, datetime.now(), 'create'))
-        except IntegrityError:
-            pass
+                })
+            execute(data, path, user)
+            # for proto in self._protocols[user]:
+                # proto.transport.write(data)
+
+
+    def _handleCreate(self, data, path, user):
+        cursor.execute("INSERT IGNORE INTO file VALUES (%s, %s, %s)", (path, user, 0))
+        cursor.execute("INSERT IGNORE INTO log (user_id, path, action) VALUES (%s, %s, %s)", (user, path, 'create'))
         for proto in self._protocols[user]:
             proto.transport.write(data)
 
-    def _handleCreateDir(self, path, user):
-        data = json.dumps({
-            'user' : user,
-            'cmd' : 'mkdir',
-            'path' : path,
-            })
-        for proto in self._protocols[user]:
-            proto.transport.write(data)
-
-    def _handleDelete(self, path, user):
-        data = json.dumps({
-            'user' : user,
-            'cmd' : 'rm',
-            'path' : path,
-            })
+    def _handleDelete(self, data, path, user):
         exclude = r'^onedir/(\d+)|(.*(swp|swn|swo|swx|tmp))$'
         if not re.match(exclude, path):
-            cursor.execute("SELECT * FROM file WHERE path = %s AND user_id = %s", (path, user))
-            if len(cursor.fetchall()) > 0:
-                try:
-                    cursor.execute("DELETE FROM file WHERE path = %s AND user_id = %s", (path, user))
-                    cursor.execute("INSERT INTO log VALUES (%s, %s, %s, %s)", (user, path, datetime.now(), 'delete'))
-                except IntegrityError:
-                    pass
+            cursor.execute("DELETE IGNORE FROM file WHERE path = %s AND user_id = %s", (path, user))
+            cursor.execute("INSERT IGNORE INTO log (user_id, path, action) VALUES (%s, %s, %s)", (user, path, 'delete'))
             for proto in self._protocols[user]:
                 proto.transport.write(data)
 
-    def _handleDeleteDir(self, path, user):
-        data = json.dumps({
-                'user' : user,
-                'cmd' : 'rmdir',
-                'path' : path,
-            })
+    def _handleDeleteDir(self, data, path, user):
         absolute_path = getAbsolutePath(path, user)
         for (fpath, _, files) in os.walk(absolute_path):
-            cursor.execute("SELECT * FROM file WHERE path = %s AND user_id = %s", (adjustPath(join(fpath, files[0])), user))
-            if len(cursor.fetchall()) == 0:
-                return
             for f in files:
                 final_path = adjustPath(join(fpath, f))
-                cursor.execute("DELETE FROM file WHERE path = %s AND user_id = %s", (final_path, user))
-                cursor.execute("INSERT INTO log VALUES (%s, %s, %s, %s)", (user, final_path, datetime.now(), 'delete'))
+                cursor.execute("DELETE IGNORE FROM file WHERE path = %s AND user_id = %s", (final_path, user))
+                cursor.execute("INSERT IGNORE INTO log (user_id, path, action) VALUES (%s, %s, %s)", (user, final_path, 'delete'))
         for proto in self._protocols[user]:
             proto.transport.write(data)
 
-    def _handleModify(self, path, user):
-        data = json.dumps({
-                'user' : user,
-                'cmd' : 'change',
-                'path' : path,
-            })
+    def _handleMovedTo(self, data, path, user):
+        for proto in self._protocols[user]:
+            proto.transport.write(data)
+
+    def _handleModify(self, data, path, user):
+        size = getsize(getAbsolutePath(path, user))
         try:
-            size = getsize(getAbsolutePath(path, user))
             cursor.execute("UPDATE file SET size = %s WHERE path = %s AND user_id = %s", (size, path, user))
-            cursor.execute("INSERT INTO log VALUES (%s, %s, %s, %s)", (user, path, datetime.now(), 'modify'))
+            cursor.execute("INSERT INTO log (user_id, path, action) VALUES (%s, %s, %s)", (user, path, 'modify'))
         except IntegrityError:
             return
+        for proto in self._protocols[user]:
+            proto.transport.write(data)
+
+    def _sendData(self, data, path, user):
         for proto in self._protocols[user]:
             proto.transport.write(data)
 
