@@ -39,15 +39,15 @@ class ClientProtocol(protocol.Protocol):
         self.factory = factory
 
     def connectionMade(self):
-        print 'Connected from ' + str(self.transport.getPeer().host)
+        print 'Connected from {0}'.format(self.transport.getPeer().host)
         data = json.dumps({
                 'user' : self.factory._user,
                 'cmd' : 'connect',
             })
         self.transport.write(data)
 
-    def connectionLost(self):
-        print 'Lost connection to ' + str(self.transport.getPeer().host)
+    def connectionLost(self, reason):
+        print 'Lost connection to {0}'.format(self.transport.getPeer().host)
         data = json.dumps({
                 'user' : self.factory._user,
                 'cmd' : 'connect_lost',
@@ -120,7 +120,6 @@ class ClientFactory(protocol.ClientFactory):
     def onChange(self, watch, fpath, mask):
         path = adjustPath(fpath.path)
         cmd = ' '.join(inotify.humanReadableMask(mask))
-        print cmd, path
         self.dispatch(path, cmd)
 
     def dispatch(self, path, cmd):
@@ -147,7 +146,7 @@ class ClientFactory(protocol.ClientFactory):
         if not re.match(exclude, path):
             cursor.execute("SELECT * FROM file WHERE path = %s AND user_id = %s", (path, self._user))
             if len(cursor.fetchall()) == 0:
-                cursor.execute("INSERT INTO file VALUES (%s, %s, %s, %s)", (path, self._user, 0, 0))
+                cursor.execute("INSERT INTO file VALUES (%s, %s, %s)", (path, self._user, 0))
                 cursor.execute("INSERT INTO log VALUES (%s, %s, %s, %s)", (self._user, path, datetime.now(), 'create'))
                 self._protocol.transport.write(data)
 
@@ -203,6 +202,8 @@ class ClientFactory(protocol.ClientFactory):
             # if count == 0:
             # cursor.execute("UPDATE file SET modified = %s WHERE path = %s AND user_id = %s", (0, path, self._user))
             try:
+                size = getsize(absolute_path)
+                cursor.execte("UPDATE file SET size = %s WHERE path = %s AND user_id = %s", (size, path, self._user))
                 cursor.execute("INSERT INTO log VALUES (%s, %s, %s, %s)", (self._user, path, datetime.now(), 'modify'))
             except IntegrityError:
                 return

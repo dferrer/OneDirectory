@@ -117,9 +117,9 @@ class ClientProtocol(protocol.Protocol):
             reactor.callInThread(self.send_data) 
         elif cmd == 'toggle autosync':
             user = raw_input('Enter a user ID: ').strip().lower()
-	        password = getpass('Enter password: ').strip().lower()
+            password = getpass('Enter password: ').strip().lower()
             toggle_autosync(user, password)
-	        reactor.callInThread(self.send_data)
+            reactor.callInThread(self.send_data)
         elif cmd == 'quit':
             os._exit(1)
         else:

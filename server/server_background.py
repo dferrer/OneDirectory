@@ -131,19 +131,6 @@ class ServerFactory(protocol.ServerFactory):
         }
         commands.get(cmd, lambda a, b: None)(path, user)
 
-    def _handleModify(self, path, user):
-        data = json.dumps({
-                'user' : user,
-                'cmd' : 'change',
-                'path' : path,
-            })
-        try:
-            cursor.execute("INSERT INTO log VALUES (%s, %s, %s, %s)", (user, path, datetime.now(), 'modify'))
-        except IntegrityError:
-            return
-        for proto in self._protocols[user]:
-            proto.transport.write(data)
-
     def _handleCreate(self, path, user):
         data = json.dumps({
                 'user' : user,
@@ -151,7 +138,7 @@ class ServerFactory(protocol.ServerFactory):
                 'path' : path,
             })
         try:
-            cursor.execute("INSERT INTO file VALUES (%s, %s, %s, %s)", (path, user, 0, 0))
+            cursor.execute("INSERT INTO file VALUES (%s, %s, %s)", (path, user, 0))
             cursor.execute("INSERT INTO log VALUES (%s, %s, %s, %s)", (user, path, datetime.now(), 'create'))
         except IntegrityError:
             pass
@@ -200,6 +187,21 @@ class ServerFactory(protocol.ServerFactory):
                 final_path = adjustPath(join(fpath, f))
                 cursor.execute("DELETE FROM file WHERE path = %s AND user_id = %s", (final_path, user))
                 cursor.execute("INSERT INTO log VALUES (%s, %s, %s, %s)", (user, final_path, datetime.now(), 'delete'))
+        for proto in self._protocols[user]:
+            proto.transport.write(data)
+
+    def _handleModify(self, path, user):
+        data = json.dumps({
+                'user' : user,
+                'cmd' : 'change',
+                'path' : path,
+            })
+        try:
+            size = getsize(getAbsolutePath(path))
+            cursor.execte("UPDATE file SET size = %s WHERE path = %s AND user_id = %s", (size, path, user))
+            cursor.execute("INSERT INTO log VALUES (%s, %s, %s, %s)", (user, path, datetime.now(), 'modify'))
+        except IntegrityError:
+            return
         for proto in self._protocols[user]:
             proto.transport.write(data)
 
