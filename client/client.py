@@ -124,7 +124,6 @@ class ClientProtocol(protocol.Protocol):
             reactor.callInThread(self.send_data())
 
     def connectionMade(self):
-        print 'Connected to {0}:{1}'.format(HOST, PORT)
         self.send_data()
 
 class ClientFactory(protocol.ClientFactory):
