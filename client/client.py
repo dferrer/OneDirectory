@@ -71,8 +71,8 @@ def toggle_autosync(user, password):
                 cursor.execute("UPDATE account SET auto_sync = 1 WHERE user_id = %s", (user,))                
                 local_path = '{0}/onedir/'.format(HOME)
                 server_path = "{0}@{1}:/home/{0}/CS3240/{2}/onedir/".format(USERNAME, HOST, user)
-                cmd1 = "rsync -azu {1}/ {2}".format(user,server_path,local_path)
-                cmd2 = "rsync -azu {1}/ {2}".format(user,local_path,server_path)
+                cmd1 = "rsync -azu --inplace {1}/ {2}".format(user,server_path,local_path)
+                cmd2 = "rsync -azu --inplace {1}/ {2}".format(user,local_path,server_path)
                 os.system(cmd1)
                 os.system(cmd2)
                 print "Sync done"
